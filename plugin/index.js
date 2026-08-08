@@ -533,8 +533,7 @@ async function signForWinlink(content, identity) {
   const { toHex } = require('@reticulum/core');
   
   // Get identity hash (SHA-256 truncated to 16 bytes, hex-encoded)
-  const publicKey = await identity.getPublicKey();
-  const publicKeyHex = toHex(publicKey);
+  const identityHashHex = toHex(identity.identityHash);
   
   // Sign the content using Ed25519
   const contentBytes = Buffer.from(content, 'utf-8');
@@ -542,7 +541,7 @@ async function signForWinlink(content, identity) {
   const sigHex = toHex(signature);
   
   return {
-    metadata: `---BEGIN RETICULUM METADATA---\nIdentityHash: ${publicKeyHex}\nAlgorithm: Ed25519\nSig: ${sigHex}\n---END RETICULUM METADATA---\n`,
+    metadata: `---BEGIN RETICULUM METADATA---\nIdentityHash: ${identityHashHex}\nAlgorithm: Ed25519\nSig: ${sigHex}\n---END RETICULUM METADATA---\n`,
     content: `---BEGIN BLOG POST---\n${content}\n---END BLOG POST---`
   };
 }
@@ -676,7 +675,7 @@ module.exports = (app) => {
             winlinkData = {
               metadata: signed.metadata,
               content: signed.content,
-              identityHash: toHex(await plugin.identity.getPublicKey())
+              identityHash: toHex(plugin.identity.identityHash)
             };
           } catch (error) {
             app.warn(`Could not generate Winlink content: ${error.message}`);
@@ -755,7 +754,7 @@ module.exports = (app) => {
         res.json({
           metadata: result.metadata,
           content: result.content,
-          identityHash: toHex(await plugin.identity.getPublicKey())
+          identityHash: toHex(plugin.identity.identityHash)
         });
       } catch (error) {
         app.error(`Sign error: ${error.message}`);
