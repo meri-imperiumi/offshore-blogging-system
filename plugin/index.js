@@ -5,18 +5,18 @@
  * via low-bandwidth satellite systems (InReach, Winlink).
  */
 
-const zlib = require('node:zlib');
-const sharp = require('sharp');
-const fs = require('fs').promises;
-const path = require('path');
-const { Identity, toHex, fromHex } = require('@reticulum/core');
+const zlib = require("node:zlib");
+const sharp = require("sharp");
+const fs = require("fs").promises;
+const path = require("path");
+const { Identity, toHex, fromHex } = require("@reticulum/core");
 
 // Garmin's confirmed 1-char-safe set (support.garmin.com character-count
 // tables). Every character our chunk format can ever emit -- header and
 // base64 payload alike -- must be in here.
 const GARMIN_SAFE_CHARS = new Set(
-  '!"#$%\'()*+,-./:;<=>?@_0123456789' +
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+  "!\"#$%'()*+,-./:;<=>?@_0123456789" +
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
 );
 
 // Check if a message contains only Garmin-safe characters
@@ -29,9 +29,9 @@ function checkGarminSafe(msg) {
   }
   if (bad.size > 0) {
     throw new Error(
-      `Message contains character(s) ${[...bad].join(', ')} not confirmed safe by ` +
-      "Garmin's character-count tables -- this would cost double or " +
-      'silently halve the whole message\'s limit. This is a bug in the encoder.'
+      `Message contains character(s) ${[...bad].join(", ")} not confirmed safe by ` +
+        "Garmin's character-count tables -- this would cost double or " +
+        "silently halve the whole message's limit. This is a bug in the encoder.",
     );
   }
 }
@@ -43,18 +43,18 @@ const DATA_BUDGET = MSG_LIMIT - HEADER_LEN;
 
 // Default sailing dictionary for compression
 const SAIL_DICT = Buffer.from(
-  'knots wind speed course heading nautical miles position latitude ' +
-  'longitude squall reef watch sunrise sunset autopilot sail sails ' +
-  'mainsail jib genoa spinnaker anchor anchorage landfall passage ' +
-  'crew galley cockpit engine diesel fuel battery solar generator ' +
-  'weather forecast grib routing waypoint tack gybe reef swell ' +
-  'following seas beam reach downwind upwind knots today we we\'re ' +
-  'the and to of a in that with for on at is was are it this '
+  "knots wind speed course heading nautical miles position latitude " +
+    "longitude squall reef watch sunrise sunset autopilot sail sails " +
+    "mainsail jib genoa spinnaker anchor anchorage landfall passage " +
+    "crew galley cockpit engine diesel fuel battery solar generator " +
+    "weather forecast grib routing waypoint tack gybe reef swell " +
+    "following seas beam reach downwind upwind knots today we we're " +
+    "the and to of a in that with for on at is was are it this ",
 );
 
 // CRC-16 calculation (CRC-16-CCITT)
 function calculateCRC16(buffer) {
-  let crc = 0xFFFF;
+  let crc = 0xffff;
   for (let i = 0; i < buffer.length; i++) {
     crc ^= buffer[i] << 8;
     for (let j = 0; j < 8; j++) {
@@ -65,30 +65,30 @@ function calculateCRC16(buffer) {
       }
     }
   }
-  return crc & 0xFFFF;
+  return crc & 0xffff;
 }
 
 // Find images referenced in markdown content
 function findImagesFromMarkdown(body, postDate, blogPath) {
   const images = [];
-  
+
   // Split the body and find image markers
-  const lines = body.split('\n');
+  const lines = body.split("\n");
   for (const line of lines) {
-    const imageMatch = line.match(/!\[([^\]]*)\]\(([^\)]+)/);
+    const imageMatch = line.match(/!\[([^\]]*)\]\(([^)]+)/);
     if (imageMatch) {
       const alt = imageMatch[1];
       // Find the full image path by scanning from the opening paren
-      const parenStart = line.indexOf('(');
+      const parenStart = line.indexOf("(");
       let parenCount = 1;
       let i = parenStart + 1;
-      let imagePath = '';
-      
+      let imagePath = "";
+
       while (i < line.length && parenCount > 0) {
-        if (line[i] === '(') {
+        if (line[i] === "(") {
           parenCount++;
           imagePath += line[i];
-        } else if (line[i] === ')') {
+        } else if (line[i] === ")") {
           parenCount--;
           if (parenCount === 0) {
             // Found the closing paren - stop
@@ -100,28 +100,28 @@ function findImagesFromMarkdown(body, postDate, blogPath) {
         }
         i++;
       }
-      
+
       imagePath = imagePath.trim();
-      
+
       // Remove trailing title if present ("text")
       const titleMatch = imagePath.match(/^(.+?)\s+"[^"]*"$/);
       if (titleMatch) {
         imagePath = titleMatch[1];
       }
-      
+
       // Resolve relative paths - handle both absolute paths and ../YYYY/ style
       let resolvedPath;
-      if (imagePath.startsWith('../')) {
+      if (imagePath.startsWith("../")) {
         // Path like ../2026/20260716_113823(0).jpg - resolve from blogPath
-        const parts = imagePath.split('/');
+        const parts = imagePath.split("/");
         const yearDir = parts[1]; // extract '2026'
-        const imageName = parts.slice(2).join('/'); // '20260716_113823(0).jpg'
+        const imageName = parts.slice(2).join("/"); // '20260716_113823(0).jpg'
         resolvedPath = path.join(blogPath, yearDir, imageName);
       } else if (path.isAbsolute(imagePath)) {
         resolvedPath = imagePath;
       } else {
         // Relative path, resolve from _logs directory
-        resolvedPath = path.resolve(blogPath, '_logs', imagePath);
+        resolvedPath = path.resolve(blogPath, "_logs", imagePath);
       }
       images.push({ alt, path: imagePath, resolvedPath });
     }
@@ -132,8 +132,8 @@ function findImagesFromMarkdown(body, postDate, blogPath) {
 // Get today's date in MMDD format
 function getTodayPostid() {
   const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
   return `${month}${day}`;
 }
 
@@ -144,8 +144,8 @@ function extractPostidFromFilename(filename) {
   if (match) {
     const datePart = match[1]; // YYYY-MM-DD
     const suffix = match[2]; // 001, 002, etc.
-    const monthDay = datePart.slice(5).replace(/-/g, ''); // MMDD
-    return suffix ? (monthDay + suffix.slice(-1)) : monthDay; // MMDD or MMDDN
+    const monthDay = datePart.slice(5).replace(/-/g, ""); // MMDD
+    return suffix ? monthDay + suffix.slice(-1) : monthDay; // MMDD or MMDDN
   }
   return null;
 }
@@ -154,43 +154,46 @@ function extractPostidFromFilename(filename) {
 function parseFrontMatter(text) {
   const match = text.match(/^---\n(.*?)\n---\n(.*)$/s);
   if (!match) {
-    throw new Error('Post has no YAML front matter (--- ... ---) block');
+    throw new Error("Post has no YAML front matter (--- ... ---) block");
   }
   const fmRaw = match[1];
   const body = match[2].trim();
 
   const frontMatter = {};
-  for (const line of fmRaw.split('\n')) {
-    if (line.includes(':')) {
-      const colonIdx = line.indexOf(':');
+  for (const line of fmRaw.split("\n")) {
+    if (line.includes(":")) {
+      const colonIdx = line.indexOf(":");
       const key = line.slice(0, colonIdx).trim();
-      const value = line.slice(colonIdx + 1).trim().replace(/^"|"$/g, '');
+      const value = line
+        .slice(colonIdx + 1)
+        .trim()
+        .replace(/^"|"$/g, "");
       frontMatter[key] = value;
     }
   }
 
   // Support both 'date' and 'created' fields (created is used in the log)
   if (!frontMatter.title) {
-    throw new Error('Front matter must include at least title:');
+    throw new Error("Front matter must include at least title:");
   }
   if (!frontMatter.date && !frontMatter.created) {
-    throw new Error('Front matter must include at least date: or created:');
+    throw new Error("Front matter must include at least date: or created:");
   }
 
   return {
     title: frontMatter.title,
     date: frontMatter.date || frontMatter.created,
-    body
+    body,
   };
 }
 
 // Compress text payload using deflate with optional dictionary
 function compressText(title, date, body, dictionary = SAIL_DICT) {
-  const payload = Buffer.from(`${title}\x1f${date}\x1f${body}`, 'utf-8');
+  const payload = Buffer.from(`${title}\x1f${date}\x1f${body}`, "utf-8");
 
   const compressed = zlib.deflateRawSync(payload, {
     level: 9,
-    dictionary
+    dictionary,
   });
 
   return compressed;
@@ -199,22 +202,24 @@ function compressText(title, date, body, dictionary = SAIL_DICT) {
 // Decompress text payload
 function decompressText(compressed, dictionary = SAIL_DICT) {
   const decompressed = zlib.inflateRawSync(compressed, {
-    dictionary
+    dictionary,
   });
 
-  const text = decompressed.toString('utf-8');
-  const [title, date, body] = text.split('\x1f', 3);
+  const text = decompressed.toString("utf-8");
+  const [title, date, body] = text.split("\x1f", 3);
 
   return { title, date, body };
 }
 
 // Chunk data into InReach messages
 function chunkData(data, postid, type) {
-  const b64 = data.toString('base64');
+  const b64 = data.toString("base64");
   const total = Math.ceil(b64.length / DATA_BUDGET);
 
   if (total > 99) {
-    throw new Error(`${type} needs ${total} messages, header only allows 99. Compress more.`);
+    throw new Error(
+      `${type} needs ${total} messages, header only allows 99. Compress more.`,
+    );
   }
 
   const crc = calculateCRC16(data);
@@ -222,7 +227,7 @@ function chunkData(data, postid, type) {
 
   for (let i = 0; i < total; i++) {
     const piece = b64.slice(i * DATA_BUDGET, (i + 1) * DATA_BUDGET);
-    const header = `${postid}${type}${String(i + 1).padStart(2, '0')}${String(total).padStart(2, '0')}${crc.toString(16).padStart(4, '0')}:`;
+    const header = `${postid}${type}${String(i + 1).padStart(2, "0")}${String(total).padStart(2, "0")}${crc.toString(16).padStart(4, "0")}:`;
     const msg = header + piece;
     checkGarminSafe(msg);
     messages.push(msg);
@@ -245,7 +250,9 @@ function reassembleChunks(entries) {
     throw new Error(`conflicting total counts seen: ${[...totals]}`);
   }
   if (crcs.size !== 1) {
-    throw new Error(`chunks disagree on checksum -- likely a mistyped message: ${[...crcs]}`);
+    throw new Error(
+      `chunks disagree on checksum -- likely a mistyped message: ${[...crcs]}`,
+    );
   }
 
   const total = totals.values().next().value;
@@ -259,7 +266,9 @@ function reassembleChunks(entries) {
     }
   }
   if (missing.length > 0) {
-    throw new Error(`missing chunk(s): ${missing} (have ${Object.keys(entries).sort()}/${total})`);
+    throw new Error(
+      `missing chunk(s): ${missing} (have ${Object.keys(entries).sort()}/${total})`,
+    );
   }
 
   // Reassemble base64 data
@@ -267,16 +276,16 @@ function reassembleChunks(entries) {
   for (let i = 1; i <= total; i++) {
     b64.push(entries[i].data);
   }
-  const b64String = b64.join('');
+  const b64String = b64.join("");
 
   // Decode and verify CRC
-  const compressed = Buffer.from(b64String, 'base64');
+  const compressed = Buffer.from(b64String, "base64");
   const gotCrc = calculateCRC16(compressed);
 
   if (gotCrc !== expectedCrc) {
     throw new Error(
-      `CRC mismatch: expected ${expectedCrc.toString(16).padStart(4, '0')} ` +
-      `got ${gotCrc.toString(16).padStart(4, '0')} -- a chunk was corrupted or mistyped`
+      `CRC mismatch: expected ${expectedCrc.toString(16).padStart(4, "0")} ` +
+        `got ${gotCrc.toString(16).padStart(4, "0")} -- a chunk was corrupted or mistyped`,
     );
   }
 
@@ -305,11 +314,11 @@ async function compressImage(imagePath, budgetMsgs) {
         .webp({ quality: q, effort: 6 })
         .toBuffer();
 
-      const b64Len = Buffer.byteLength(data.toString('base64'));
+      const b64Len = Buffer.byteLength(data.toString("base64"));
       const nMsgs = Math.ceil(b64Len / DATA_BUDGET);
 
       if (nMsgs <= budgetMsgs) {
-        if (!best || (w * h) > (best.width * best.height)) {
+        if (!best || w * h > best.width * best.height) {
           best = { width: w, height: h, quality: q, data };
         }
       }
@@ -323,7 +332,7 @@ async function compressImage(imagePath, budgetMsgs) {
   if (!best) {
     throw new Error(
       `Could not fit any usable image into ${budgetMsgs} messages; ` +
-      'raise --image-budget or shrink the source photo.'
+        "raise --image-budget or shrink the source photo.",
     );
   }
 
@@ -331,13 +340,21 @@ async function compressImage(imagePath, budgetMsgs) {
 }
 
 // Encode a complete blog post
-async function encodeBlogPost(filename, postid, imageBudget, dictionaryPath, blogPath, includeImages = null) {
+async function encodeBlogPost(
+  filename,
+  postid,
+  imageBudget,
+  dictionaryPath,
+  blogPath,
+  includeImages = null,
+) {
   // Auto-extract postid from filename if not provided
-  const postIdToUse = postid || extractPostidFromFilename(filename) || getTodayPostid();
-  
+  const postIdToUse =
+    postid || extractPostidFromFilename(filename) || getTodayPostid();
+
   // Validate postid
   if (postIdToUse.length !== 4) {
-    throw new Error('postid must be exactly 4 characters, e.g. 0805');
+    throw new Error("postid must be exactly 4 characters, e.g. 0805");
   }
 
   // Load dictionary
@@ -347,12 +364,12 @@ async function encodeBlogPost(filename, postid, imageBudget, dictionaryPath, blo
 
   // Construct the full path to the markdown file
   // Default to blogPath/_logs/filename.md
-  const markdownPath = filename.endsWith('.md')
-    ? path.join(blogPath, '_logs', filename)
-    : path.join(blogPath, '_logs', `${filename}.md`);
+  const markdownPath = filename.endsWith(".md")
+    ? path.join(blogPath, "_logs", filename)
+    : path.join(blogPath, "_logs", `${filename}.md`);
 
   // Read and parse markdown
-  const markdown = await fs.readFile(markdownPath, 'utf-8');
+  const markdown = await fs.readFile(markdownPath, "utf-8");
   const { title, date, body } = parseFrontMatter(markdown);
 
   // Use the date from front matter, or extract from filename
@@ -371,14 +388,15 @@ async function encodeBlogPost(filename, postid, imageBudget, dictionaryPath, blo
 
   // Compress and chunk text
   const textBlob = compressText(title, postDate, body, dictionary);
-  const textMessages = chunkData(textBlob, postIdToUse, 'T');
+  const textMessages = chunkData(textBlob, postIdToUse, "T");
 
   // Compress and chunk images (filter by includeImages if provided)
   const imageMessages = [];
   const imageInfos = [];
-  const imagesToEncode = includeImages !== null
-    ? images.filter((img, idx) => includeImages.includes(idx))
-    : images;
+  const imagesToEncode =
+    includeImages !== null
+      ? images.filter((img, idx) => includeImages.includes(idx))
+      : images;
 
   if (imagesToEncode.length > 0) {
     for (const image of imagesToEncode) {
@@ -388,7 +406,7 @@ async function encodeBlogPost(filename, postid, imageBudget, dictionaryPath, blo
         imageInfos.push({
           alt: image.alt,
           originalPath: image.path,
-          ...imgResult
+          ...imgResult,
         });
         const imgBlob = imgResult.data;
         // Use different type suffix for multiple images (I, J, K...)
@@ -409,107 +427,134 @@ async function encodeBlogPost(filename, postid, imageBudget, dictionaryPath, blo
     imageInfos,
     totalMessages: textMessages.length + imageMessages.length,
     foundImages: images.length,
-    selectedImages: imagesToEncode.length
+    selectedImages: imagesToEncode.length,
   };
 }
 
 // Load Reticulum identity from signalk-reticulum plugin config or file path
 async function loadReticulumIdentity(app, identityPath) {
-  const { Identity, toHex, fromHex } = require('@reticulum/core');
-  
+  const { Identity, toHex, fromHex } = require("@reticulum/core");
+
   // Try file path first (explicit configuration)
   if (identityPath) {
     try {
       await fs.access(identityPath, fs.constants.R_OK);
-      const keyData = await fs.readFile(identityPath, 'utf-8');
+      const keyData = await fs.readFile(identityPath, "utf-8");
       const privateKeyHex = keyData.trim();
       const privateKey = fromHex(privateKeyHex);
       const identity = await Identity.fromBytes(privateKey);
       app.debug(`Loaded identity from file: ${identityPath}`);
       return identity;
     } catch (error) {
-      app.debug(`Could not load identity from file ${identityPath}: ${error.message}`);
+      app.debug(
+        `Could not load identity from file ${identityPath}: ${error.message}`,
+      );
     }
   }
-  
+
   // Try to read from signalk-reticulum plugin configuration file
   const skConfigPaths = [];
-  
+
   // Use app.getDataDirPath() if available to get the Signal K data directory
-  if (typeof app.getDataDirPath === 'function') {
+  if (typeof app.getDataDirPath === "function") {
     try {
       const dataDir = app.getDataDirPath();
       skConfigPaths.push(
-        path.join(dataDir, 'plugin-config-data', 'signalk-reticulum.json'),
-        path.join(dataDir, 'plugin-config-data', 'signalk-reticulum')
+        path.join(dataDir, "plugin-config-data", "signalk-reticulum.json"),
+        path.join(dataDir, "plugin-config-data", "signalk-reticulum"),
       );
     } catch (error) {
       app.debug(`Could not get data directory path: ${error.message}`);
     }
   }
-  
+
   // Fallback to common locations
   skConfigPaths.push(
-    path.join(process.env.HOME || process.env.USERPROFILE || '', '.signalk', 'plugin-config-data', 'signalk-reticulum.json'),
-    path.join(process.env.HOME || process.env.USERPROFILE || '', '.signalk', 'plugin-config-data', 'signalk-reticulum'),
-    path.join(process.cwd(), 'plugin-config-data', 'signalk-reticulum.json')
+    path.join(
+      process.env.HOME || process.env.USERPROFILE || "",
+      ".signalk",
+      "plugin-config-data",
+      "signalk-reticulum.json",
+    ),
+    path.join(
+      process.env.HOME || process.env.USERPROFILE || "",
+      ".signalk",
+      "plugin-config-data",
+      "signalk-reticulum",
+    ),
+    path.join(process.cwd(), "plugin-config-data", "signalk-reticulum.json"),
   );
-  
+
   for (const configPath of skConfigPaths) {
     try {
       await fs.access(configPath, fs.constants.R_OK);
-      const configData = await fs.readFile(configPath, 'utf-8');
+      const configData = await fs.readFile(configPath, "utf-8");
       const config = JSON.parse(configData);
-      
+
       if (config.configuration?.identity?.privateKey) {
         const privateKeyHex = config.configuration.identity.privateKey.trim();
         const privateKey = fromHex(privateKeyHex);
         const identity = await Identity.fromBytes(privateKey);
-        app.debug(`Loaded identity from signalk-reticulum config: ${configPath}`);
+        app.debug(
+          `Loaded identity from signalk-reticulum config: ${configPath}`,
+        );
         return identity;
       }
     } catch (error) {
-      app.debug(`Could not load identity from signalk-reticulum config ${configPath}: ${error.message}`);
+      app.debug(
+        `Could not load identity from signalk-reticulum config ${configPath}: ${error.message}`,
+      );
     }
   }
-  
+
   // Try to get from signalk-reticulum plugin instance
   // Signal K stores loaded plugins in different ways depending on version
   try {
-    if (app.plugins && app.plugins['signalk-reticulum']) {
-      const reticulumPlugin = app.plugins['signalk-reticulum'];
+    if (app.plugins && app.plugins["signalk-reticulum"]) {
+      const reticulumPlugin = app.plugins["signalk-reticulum"];
       if (reticulumPlugin.identity) {
-        app.debug('Using identity from signalk-reticulum plugin (app.plugins)');
+        app.debug("Using identity from signalk-reticulum plugin (app.plugins)");
         return reticulumPlugin.identity;
       }
     }
   } catch (error) {
-    app.debug(`Could not access signalk-reticulum via app.plugins: ${error.message}`);
+    app.debug(
+      `Could not access signalk-reticulum via app.plugins: ${error.message}`,
+    );
   }
-  
+
   try {
     if (app.pluginManager && app.pluginManager.plugins) {
-      const reticulumPlugin = app.pluginManager.plugins.get('signalk-reticulum');
+      const reticulumPlugin =
+        app.pluginManager.plugins.get("signalk-reticulum");
       if (reticulumPlugin && reticulumPlugin.identity) {
-        app.debug('Using identity from signalk-reticulum plugin (app.pluginManager)');
+        app.debug(
+          "Using identity from signalk-reticulum plugin (app.pluginManager)",
+        );
         return reticulumPlugin.identity;
       }
     }
   } catch (error) {
-    app.debug(`Could not access signalk-reticulum via pluginManager: ${error.message}`);
+    app.debug(
+      `Could not access signalk-reticulum via pluginManager: ${error.message}`,
+    );
   }
-  
+
   // Try to read from common Reticulum identity locations
   const commonPaths = [
-    path.join(process.env.HOME || process.env.USERPROFILE || '', '.reticulum', 'identity'),
-    path.join('/', 'var', 'lib', 'reticulum', 'identity'),
-    path.join(process.cwd(), '.reticulum', 'identity')
+    path.join(
+      process.env.HOME || process.env.USERPROFILE || "",
+      ".reticulum",
+      "identity",
+    ),
+    path.join("/", "var", "lib", "reticulum", "identity"),
+    path.join(process.cwd(), ".reticulum", "identity"),
   ];
-  
+
   for (const testPath of commonPaths) {
     try {
       await fs.access(testPath, fs.constants.R_OK);
-      const keyData = await fs.readFile(testPath, 'utf-8');
+      const keyData = await fs.readFile(testPath, "utf-8");
       const privateKeyHex = keyData.trim();
       const privateKey = fromHex(privateKeyHex);
       const identity = await Identity.fromBytes(privateKey);
@@ -519,81 +564,87 @@ async function loadReticulumIdentity(app, identityPath) {
       // Continue to next path
     }
   }
-  
-  app.debug('No Reticulum identity found - Winlink signing will be unavailable');
+
+  app.debug(
+    "No Reticulum identity found - Winlink signing will be unavailable",
+  );
   return null;
 }
 
 // Sign message for Winlink transmission using Reticulum Ed25519
 async function signForWinlink(content, identity) {
   if (!identity) {
-    throw new Error('No identity provided for signing');
+    throw new Error("No identity provided for signing");
   }
-  
-  const { toHex } = require('@reticulum/core');
-  
+
+  const { toHex } = require("@reticulum/core");
+
   // Get identity hash (SHA-256 truncated to 16 bytes, hex-encoded)
   const identityHashHex = toHex(identity.identityHash);
-  
+
   // Sign the content using Ed25519
-  const contentBytes = Buffer.from(content, 'utf-8');
+  const contentBytes = Buffer.from(content, "utf-8");
   const signature = await identity.sign(contentBytes);
   const sigHex = toHex(signature);
-  
+
   return {
     metadata: `---BEGIN RETICULUM METADATA---\nIdentityHash: ${identityHashHex}\nAlgorithm: Ed25519\nSig: ${sigHex}\n---END RETICULUM METADATA---\n`,
-    content: `---BEGIN BLOG POST---\n${content}\n---END BLOG POST---`
+    content: `---BEGIN BLOG POST---\n${content}\n---END BLOG POST---`,
   };
 }
 
 module.exports = (app) => {
   const plugin = {};
 
-  plugin.id = 'signalk-offshore-blogging';
-  plugin.name = 'Offshore Blogging';
-  plugin.description = 'Encode blog posts and weather requests for low-bandwidth satellite transmission';
+  plugin.id = "signalk-offshore-blogging";
+  plugin.name = "Offshore Blogging";
+  plugin.description =
+    "Encode blog posts and weather requests for low-bandwidth satellite transmission";
 
   plugin.start = async (options) => {
     // Store configuration for later use
     plugin.config = options || {};
-    
+
     // Load Reticulum identity for Winlink signing
-    plugin.identity = await loadReticulumIdentity(app, options.reticulumIdentityPath);
+    plugin.identity = await loadReticulumIdentity(
+      app,
+      options.reticulumIdentityPath,
+    );
     if (plugin.identity) {
-      app.debug('Reticulum identity loaded for Winlink signing');
+      app.debug("Reticulum identity loaded for Winlink signing");
     } else {
-      app.debug('No Reticulum identity available - Winlink signing disabled');
+      app.debug("No Reticulum identity available - Winlink signing disabled");
     }
-    
-    app.debug('Offshore Blogging plugin started');
-    app.setPluginStatus('Ready');
+
+    app.debug("Offshore Blogging plugin started");
+    app.setPluginStatus("Ready");
   };
 
   plugin.registerWithRouter = (router) => {
     // Serve static files
-    router.get('/', (req, res) => {
-      res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+    router.get("/", (req, res) => {
+      res.sendFile(path.join(__dirname, "..", "public", "index.html"));
     });
 
     // API: Preview compressed images (without chunking)
-    router.post('/api/preview-images', async (req, res) => {
+    router.post("/api/preview-images", async (req, res) => {
       try {
         const { filename, imageBudget } = req.body;
 
         if (!filename) {
-          return res.status(400).json({ error: 'filename is required' });
+          return res.status(400).json({ error: "filename is required" });
         }
 
         // Get blog path from plugin configuration
-        const blogPath = plugin.config?.blogSyncPath || '/home/pi/log';
+        const blogPath = plugin.config?.blogSyncPath || "/home/pi/log";
 
         // Construct the full path to the markdown file
-        const markdownPath = filename.endsWith('.md')
-          ? path.join(blogPath, '_logs', filename)
-          : path.join(blogPath, '_logs', `${filename}.md`);
+        const markdownPath = filename.endsWith(".md")
+          ? path.join(blogPath, "_logs", filename)
+          : path.join(blogPath, "_logs", `${filename}.md`);
 
         // Read and parse markdown
-        const markdown = await fs.readFile(markdownPath, 'utf-8');
+        const markdown = await fs.readFile(markdownPath, "utf-8");
         const { body } = parseFrontMatter(markdown);
 
         // Extract date from filename
@@ -608,7 +659,10 @@ module.exports = (app) => {
         for (const image of images) {
           try {
             await fs.access(image.resolvedPath);
-            const imgResult = await compressImage(image.resolvedPath, imageBudget);
+            const imgResult = await compressImage(
+              image.resolvedPath,
+              imageBudget,
+            );
             previews.push({
               alt: image.alt,
               originalPath: image.path,
@@ -617,15 +671,17 @@ module.exports = (app) => {
               height: imgResult.height,
               quality: imgResult.quality,
               compressedSize: imgResult.data.length,
-              base64: imgResult.data.toString('base64')
+              base64: imgResult.data.toString("base64"),
             });
           } catch (error) {
-            app.error(`Could not access image ${image.resolvedPath}: ${error.message}`);
+            app.error(
+              `Could not access image ${image.resolvedPath}: ${error.message}`,
+            );
             previews.push({
               alt: image.alt,
               originalPath: image.path,
               resolvedPath: image.resolvedPath,
-              error: `File not found: ${error.message}`
+              error: `File not found: ${error.message}`,
             });
           }
         }
@@ -638,16 +694,18 @@ module.exports = (app) => {
     });
 
     // API: Encode a blog post for InReach
-    router.post('/api/encode', async (req, res) => {
+    router.post("/api/encode", async (req, res) => {
       try {
         const { filename, postid, imageBudget, includeImages } = req.body;
 
         if (!filename) {
-          return res.status(400).json({ error: 'filename is required (e.g., 2026-08-07)' });
+          return res
+            .status(400)
+            .json({ error: "filename is required (e.g., 2026-08-07)" });
         }
 
         // Get blog path from plugin configuration
-        const blogPath = plugin.config?.blogSyncPath || '/home/pi/log';
+        const blogPath = plugin.config?.blogSyncPath || "/home/pi/log";
         const dictPath = plugin.config?.dictionaryPath || null;
 
         app.debug(`Encoding post: filename=${filename}, blogPath=${blogPath}`);
@@ -658,31 +716,31 @@ module.exports = (app) => {
           imageBudget,
           dictPath,
           blogPath,
-          includeImages // Pass list of images to include
+          includeImages, // Pass list of images to include
         );
 
         // Also generate Winlink signed content if identity is available
         let winlinkData = null;
         if (plugin.identity) {
           try {
-            const markdownPath = filename.endsWith('.md')
-              ? path.join(blogPath, '_logs', filename)
-              : path.join(blogPath, '_logs', `${filename}.md`);
-            const markdown = await fs.readFile(markdownPath, 'utf-8');
+            const markdownPath = filename.endsWith(".md")
+              ? path.join(blogPath, "_logs", filename)
+              : path.join(blogPath, "_logs", `${filename}.md`);
+            const markdown = await fs.readFile(markdownPath, "utf-8");
             const { title, date, body } = parseFrontMatter(markdown);
             const content = `${title}\n\n${body}`;
             const signed = await signForWinlink(content, plugin.identity);
             winlinkData = {
               metadata: signed.metadata,
               content: signed.content,
-              identityHash: toHex(plugin.identity.identityHash)
+              identityHash: toHex(plugin.identity.identityHash),
             };
           } catch (error) {
             app.warn(`Could not generate Winlink content: ${error.message}`);
             winlinkData = { error: error.message };
           }
         } else {
-          winlinkData = { error: 'No Reticulum identity available' };
+          winlinkData = { error: "No Reticulum identity available" };
         }
 
         res.json({ ...result, winlink: winlinkData });
@@ -693,12 +751,14 @@ module.exports = (app) => {
     });
 
     // API: Reassemble chunks
-    router.post('/api/reassemble', async (req, res) => {
+    router.post("/api/reassemble", async (req, res) => {
       try {
         const { chunks, type, dictionaryPath } = req.body;
 
         if (!chunks || !type) {
-          return res.status(400).json({ error: 'chunks and type are required' });
+          return res
+            .status(400)
+            .json({ error: "chunks and type are required" });
         }
 
         const dictionary = dictionaryPath
@@ -707,15 +767,15 @@ module.exports = (app) => {
 
         const compressed = reassembleChunks(chunks);
 
-        if (type === 'T') {
+        if (type === "T") {
           const { title, date, body } = decompressText(compressed, dictionary);
           res.json({ title, date, body });
-        } else if (type === 'I') {
+        } else if (type === "I") {
           // Return base64-encoded image
-          const base64 = compressed.toString('base64');
+          const base64 = compressed.toString("base64");
           res.json({ image: `data:image/webp;base64,${base64}` });
         } else {
-          res.status(400).json({ error: 'Invalid type, must be T or I' });
+          res.status(400).json({ error: "Invalid type, must be T or I" });
         }
       } catch (error) {
         app.error(`Reassemble error: ${error.message}`);
@@ -724,26 +784,29 @@ module.exports = (app) => {
     });
 
     // API: Sign for Winlink
-    router.post('/api/sign', async (req, res) => {
+    router.post("/api/sign", async (req, res) => {
       try {
         const { filename } = req.body;
 
         if (!filename) {
-          return res.status(400).json({ error: 'filename is required' });
+          return res.status(400).json({ error: "filename is required" });
         }
 
         if (!plugin.identity) {
-          return res.status(503).json({ error: 'No Reticulum identity available for signing. Configure reticulumIdentityPath or ensure signalk-reticulum plugin is installed.' });
+          return res.status(503).json({
+            error:
+              "No Reticulum identity available for signing. Configure reticulumIdentityPath or ensure signalk-reticulum plugin is installed.",
+          });
         }
 
         // Get blog path and read the post
-        const blogPath = plugin.config?.blogSyncPath || '/home/pi/log';
+        const blogPath = plugin.config?.blogSyncPath || "/home/pi/log";
         const dictPath = plugin.config?.dictionaryPath || null;
-        const markdownPath = filename.endsWith('.md')
-          ? path.join(blogPath, '_logs', filename)
-          : path.join(blogPath, '_logs', `${filename}.md`);
+        const markdownPath = filename.endsWith(".md")
+          ? path.join(blogPath, "_logs", filename)
+          : path.join(blogPath, "_logs", `${filename}.md`);
 
-        const markdown = await fs.readFile(markdownPath, 'utf-8');
+        const markdown = await fs.readFile(markdownPath, "utf-8");
         const { title, date, body } = parseFrontMatter(markdown);
 
         // Format as plain text email body
@@ -754,7 +817,7 @@ module.exports = (app) => {
         res.json({
           metadata: result.metadata,
           content: result.content,
-          identityHash: toHex(plugin.identity.identityHash)
+          identityHash: toHex(plugin.identity.identityHash),
         });
       } catch (error) {
         app.error(`Sign error: ${error.message}`);
@@ -764,38 +827,40 @@ module.exports = (app) => {
   };
 
   plugin.stop = () => {
-    app.debug('Offshore Blogging plugin stopped');
+    app.debug("Offshore Blogging plugin stopped");
   };
 
   plugin.schema = {
-    type: 'object',
+    type: "object",
     properties: {
       blogSyncPath: {
-        type: 'string',
-        title: 'Blog sync path',
-        description: 'Path to the blog directory (e.g., /home/pi/log). Posts should be in _logs/ subdirectory',
-        default: '/home/pi/log'
+        type: "string",
+        title: "Blog sync path",
+        description:
+          "Path to the blog directory (e.g., /home/pi/log). Posts should be in _logs/ subdirectory",
+        default: "/home/pi/log",
       },
       dictionaryPath: {
-        type: 'string',
-        title: 'Custom dictionary path',
-        description: 'Path to custom compression dictionary file (optional)'
+        type: "string",
+        title: "Custom dictionary path",
+        description: "Path to custom compression dictionary file (optional)",
       },
       defaultImageBudget: {
-        type: 'number',
-        title: 'Default image message budget',
-        description: 'Default number of InReach messages for images',
+        type: "number",
+        title: "Default image message budget",
+        description: "Default number of InReach messages for images",
         default: 5,
         minimum: 1,
-        maximum: 99
+        maximum: 99,
       },
       reticulumIdentityPath: {
-        type: 'string',
-        title: 'Reticulum identity path',
-        description: 'Path to stored Reticulum identity file for Winlink signing. If not provided, will try to use signalk-reticulum plugin\'s identity.',
-        default: ''
-      }
-    }
+        type: "string",
+        title: "Reticulum identity path",
+        description:
+          "Path to stored Reticulum identity file for Winlink signing. If not provided, will try to use signalk-reticulum plugin's identity.",
+        default: "",
+      },
+    },
   };
 
   return plugin;
