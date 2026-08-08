@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offshore Blogging</title>
+  <style>
+    :root {
+      --bg-color: #1a1a2e;
+      --card-bg: #16213e;
+      --text-color: #eaeaea;
+      --accent-color: #0f3460;
+      --highlight-color: #e94560;
+      --success-color: #2ecc71;
+      --border-color: #2a3f5f;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      line-height: 1.6;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 20px;
+      color: var(--highlight-color);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 10px;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      background: var(--card-bg);
+      border: none;
+      color: var(--text-color);
+      cursor: pointer;
+      border-radius: 5px 5px 0 0;
+      font-size: 1rem;
+    }
+
+    .tab:hover {
+      background: var(--accent-color);
+    }
+
+    .tab.active {
+      background: var(--highlight-color);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border-color);
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    textarea {
+      width: 100%;
+      padding: 10px;
+      background: var(--bg-color);
+      border: 1px solid var(--border-color);
+      border-radius: 5px;
+      color: var(--text-color);
+      font-size: 1rem;
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--highlight-color);
+    }
+
+    button {
+      padding: 10px 20px;
+      background: var(--highlight-color);
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    button:hover {
+      background: #d63850;
+    }
+
+    button:disabled {
+      background: var(--border-color);
+      cursor: not-allowed;
+    }
+
+    .message-list {
+      margin-top: 20px;
+    }
+
+    .message-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: var(--bg-color);
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+
+    .message-number {
+      background: var(--highlight-color);
+      padding: 5px 10px;
+      border-radius: 3px;
+      font-weight: bold;
+      min-width: 50px;
+      text-align: center;
+    }
+
+    .message-content {
+      flex: 1;
+      font-family: monospace;
+      font-size: 0.9rem;
+      word-break: break-all;
+    }
+
+    .copy-btn {
+      padding: 5px 10px;
+      background: var(--accent-color);
+      font-size: 0.8rem;
+    }
+
+    .copy-btn:hover {
+      background: #1a4a7a;
+    }
+
+    .copy-btn.copied {
+      background: var(--success-color);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .stat-item {
+      background: var(--bg-color);
+      padding: 15px;
+      border-radius: 5px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: var(--highlight-color);
+    }
+
+    .stat-label {
+      font-size: 0.9rem;
+      color: #888;
+    }
+
+    .error {
+      background: #5a1a1a;
+      color: #ff6b6b;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+    }
+
+    .success {
+      background: #1a3a1a;
+      color: #6bff6b;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+    }
+
+    .info {
+      background: var(--accent-color);
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+    }
+
+    .version-selector {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .version-btn {
+      flex: 1;
+    }
+
+    .version-btn.active {
+      background: var(--success-color);
+    }
+
+    textarea.code-block {
+      font-family: monospace;
+      font-size: 0.85rem;
+      min-height: 150px;
+      white-space: pre-wrap;
+    }
+
+    .chunk-input {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      margin-bottom: 10px;
+    }
+
+    .chunk-input input {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌊 Offshore Blogging</h1>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="blog">Blog Post</button>
+      <button class="tab" data-tab="weather">Weather Request</button>
+      <button class="tab" data-tab="decode">Decode GRIB</button>
+    </div>
+
+    <!-- Blog Post Tab -->
+    <div id="blog" class="tab-content active">
+      <div class="card">
+        <h2>Encode Blog Post for Transmission</h2>
+        <div class="form-group">
+          <label for="filename">Post filename (e.g., 2026-06-18 or 2026-06-18_001.md):</label>
+          <input type="text" id="filename" placeholder="2026-08-08">
+          <small style="color: #888;">.md extension is optional</small>
+        </div>
+        <div class="form-group">
+          <label for="postid">Post ID (MMDD, defaults to today):</label>
+          <input type="text" id="postid" placeholder="0808">
+        </div>
+        <div class="form-group">
+          <label for="imageBudget">Image message budget per image (1-99):</label>
+          <input type="number" id="imageBudget" value="5" min="1" max="99">
+          <small style="color: #888;">Images are auto-detected from markdown content</small>
+        </div>
+        <button id="encodeBtn">Encode Post</button>
+      </div>
+
+      <div id="encodeResults" style="display: none;">
+        <div class="card">
+          <div class="stats">
+            <div class="stat-item">
+              <div class="stat-value" id="statMessages">0</div>
+              <div class="stat-label">Total Messages</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="statTextMessages">0</div>
+              <div class="stat-label">Text Messages</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="statImageMessages">0</div>
+              <div class="stat-label">Image Messages</div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Transmission Version:</label>
+            <div class="version-selector">
+              <button class="version-btn active" data-version="text">Text Only (InReach)</button>
+              <button class="version-btn" data-version="image">Text + Image (InReach)</button>
+              <button class="version-btn" data-version="winlink">Winlink (Signed)</button>
+            </div>
+          </div>
+
+          <div id="messageList" class="message-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weather Request Tab -->
+    <div id="weather" class="tab-content">
+      <div class="card">
+        <h2>Weather Request</h2>
+        <div class="info">
+          Select a preset or customize your request. Larger requests may exceed 10 messages.
+        </div>
+        <div class="form-group">
+          <label>Presets:</label>
+          <select id="weatherPreset" style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-color);">
+            <option value="">-- Select preset --</option>
+            <option value="gfs:24n,34n,72w,60w|2,2|12,24,36,48|wind">Local wind forecast (4 timepoints)</option>
+            <option value="gfs:24n,34n,72w,60w|4,4|12,24,36,48|wind,press">Local wind + pressure (4 timepoints)</option>
+            <option value="ecmwf:44n,10n,75w,10w|8,8|12,48|wind,press">Atlantic crossing (2 timepoints)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="weatherRequest">Saildocs request:</label>
+          <input type="text" id="weatherRequest" placeholder="gfs:24n,34n,72w,60w|2,2|12,24,36,48|wind">
+        </div>
+        <button id="weatherBtn">Generate Request</button>
+      </div>
+
+      <div id="weatherResults" style="display: none;">
+        <div class="card">
+          <div class="stats">
+            <div class="stat-item">
+              <div class="stat-value" id="weatherMessages">0</div>
+              <div class="stat-label">Messages</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value" id="weatherModel">-</div>
+              <div class="stat-label">Weather Model</div>
+            </div>
+          </div>
+          <div id="weatherMessageList" class="message-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Decode GRIB Tab -->
+    <div id="decode" class="tab-content">
+      <div class="card">
+        <h2>Reassemble GRIB from Messages</h2>
+        <div class="info">
+          Paste each received message below. The system will group them by post ID and verify integrity.
+        </div>
+        <div class="form-group">
+          <label for="chunkInput">Add a chunk (one per line):</label>
+          <div class="chunk-input">
+            <input type="text" id="chunkInput" placeholder="0805T0107a91f:LT$?F(D..">
+            <button id="addChunkBtn">Add Chunk</button>
+          </div>
+        </div>
+        <button id="reassembleBtn">Reassemble</button>
+        <button id="clearChunksBtn">Clear All</button>
+      </div>
+
+      <div id="chunksList" style="display: none;">
+        <div class="card">
+          <h3>Received Chunks</h3>
+          <div id="chunksDisplay"></div>
+        </div>
+      </div>
+
+      <div id="reassembleResults" style="display: none;">
+        <div class="card">
+          <h3>Result</h3>
+          <div id="reassembleOutput"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

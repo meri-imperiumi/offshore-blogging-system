@@ -1,0 +1,38 @@
+{
+  "name": "@meri-imperiumi/signalk-offshore-blogging",
+  "version": "0.1.0",
+  "description": "Offshore blogging system for Signal K - encode blog posts and weather requests for low-bandwidth satellite transmission",
+  "main": "plugin/index.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/meri-imperiumi/signalk-offshore-blogging.git"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-category-utility",
+    "signalk-webapp",
+    "inreach",
+    "offshore",
+    "blogging"
+  ],
+  "author": "Henri Bergius <henri.bergius@iki.fi>",
+  "license": "EUPL-1.2",
+  "bugs": {
+    "url": "https://github.com/meri-imperiumi/signalk-offshore-blogging/issues"
+  },
+  "homepage": "https://github.com/meri-imperiumi/signalk-offshore-blogging#readme",
+  "signalk": {
+    "displayName": "Offshore Blogging",
+    "description": "Encode blog posts and weather requests for transmission via InReach or Winlink"
+  },
+  "dependencies": {
+    "@reticulum/core": "^0.6.1",
+    "sharp": "^0.33.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
