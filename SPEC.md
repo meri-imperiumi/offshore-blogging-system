@@ -3,7 +3,7 @@
 On sailing vessel [Lille Ø](https://lille-oe.de) we have three layers of offshore communications systems, in decreasing level of bandwidth and fidelity:
 1. Starlink Mini
 2. Amateur HF radio with Vara HF modem and Pat/Winlink
-3. InReach Mini
+3. InReach Mini 2
 
 Our [daily offshore routine](https://handbook.lille-oe.de/checklists/02_daily_checks/) includes making a blog post and downloading the latest weather information via Grib. Until now we have done this mostly over Starlink, but as Starlink is making their service prohibitively expensive for cruisers starting in August 2026, we need to look for alternatives. Idea is a two-level system where radically compressed / lo-fi version happens offshore either over InReach or Garmin, and then the transfer of the hi-fi assets (like full-color pictures) can happen when we have access to shorebound LTE.
 
