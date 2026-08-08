@@ -36,7 +36,7 @@ We additionally have a cloud VPS that can be used to automate things that requir
   - Chunks should be persisted on server so that reassembly is possible even after a server crash or restart
   - Never publish a partially/corruptly reassembled post, only a fully verified one
 - The server then writes the blog post and attachments to the git repository. This needs consistent file naming to ensure multiple email reads don't end up with duplicate posts (as well as to ensure the hi-fi version eventually overrides the files)
-- The server overlays a small watermark/banner on lo-fi images before committing (e.g. 'lo-fi preview via satellite') so a viewer never mistakes a blurry placeholder for the final photo
+- The server overlays a small watermark/banner on lo-fi images before committing (e.g. 'lo-fi preview via radio') so a viewer never mistakes a blurry placeholder for the final photo
 - The cloud server also periodically tries to sync the repository via rngit (works when boat has full internet) to get the hi-fi assets
   - This needs to be done so that the hi-fi assets override the lo-fi versions (likely `-X theirs` merge strategy)
 - When there is new content to push, the cloud server pushes it to GitHub

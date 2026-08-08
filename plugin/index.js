@@ -7,11 +7,9 @@
 
 const zlib = require('node:zlib');
 const sharp = require('sharp');
-const fs = require('fs').
-promises;
+const fs = require('fs').promises;
 const path = require('path');
-const { Identity, toHex } = require('@reticulum/core');
-const { Reticulum } = require('@reticulum/core');
+const { Identity, toHex, fromHex } = require('@reticulum/core');
 
 // Garmin's confirmed 1-char-safe set (support.garmin.com character-count
 // tables). Every character our chunk format can ever emit -- header and
@@ -415,12 +413,136 @@ async function encodeBlogPost(filename, postid, imageBudget, dictionaryPath, blo
   };
 }
 
+// Load Reticulum identity from signalk-reticulum plugin config or file path
+async function loadReticulumIdentity(app, identityPath) {
+  const { Identity, toHex, fromHex } = require('@reticulum/core');
+  
+  // Try file path first (explicit configuration)
+  if (identityPath) {
+    try {
+      await fs.access(identityPath, fs.constants.R_OK);
+      const keyData = await fs.readFile(identityPath, 'utf-8');
+      const privateKeyHex = keyData.trim();
+      const privateKey = fromHex(privateKeyHex);
+      const identity = await Identity.fromBytes(privateKey);
+      app.debug(`Loaded identity from file: ${identityPath}`);
+      return identity;
+    } catch (error) {
+      app.debug(`Could not load identity from file ${identityPath}: ${error.message}`);
+    }
+  }
+  
+  // Try to read from signalk-reticulum plugin configuration file
+  const skConfigPaths = [];
+  
+  // Use app.getDataDirPath() if available to get the Signal K data directory
+  if (typeof app.getDataDirPath === 'function') {
+    try {
+      const dataDir = app.getDataDirPath();
+      skConfigPaths.push(
+        path.join(dataDir, 'plugin-config-data', 'signalk-reticulum.json'),
+        path.join(dataDir, 'plugin-config-data', 'signalk-reticulum')
+      );
+    } catch (error) {
+      app.debug(`Could not get data directory path: ${error.message}`);
+    }
+  }
+  
+  // Fallback to common locations
+  skConfigPaths.push(
+    path.join(process.env.HOME || process.env.USERPROFILE || '', '.signalk', 'plugin-config-data', 'signalk-reticulum.json'),
+    path.join(process.env.HOME || process.env.USERPROFILE || '', '.signalk', 'plugin-config-data', 'signalk-reticulum'),
+    path.join(process.cwd(), 'plugin-config-data', 'signalk-reticulum.json')
+  );
+  
+  for (const configPath of skConfigPaths) {
+    try {
+      await fs.access(configPath, fs.constants.R_OK);
+      const configData = await fs.readFile(configPath, 'utf-8');
+      const config = JSON.parse(configData);
+      
+      if (config.configuration?.identity?.privateKey) {
+        const privateKeyHex = config.configuration.identity.privateKey.trim();
+        const privateKey = fromHex(privateKeyHex);
+        const identity = await Identity.fromBytes(privateKey);
+        app.debug(`Loaded identity from signalk-reticulum config: ${configPath}`);
+        return identity;
+      }
+    } catch (error) {
+      app.debug(`Could not load identity from signalk-reticulum config ${configPath}: ${error.message}`);
+    }
+  }
+  
+  // Try to get from signalk-reticulum plugin instance
+  // Signal K stores loaded plugins in different ways depending on version
+  try {
+    if (app.plugins && app.plugins['signalk-reticulum']) {
+      const reticulumPlugin = app.plugins['signalk-reticulum'];
+      if (reticulumPlugin.identity) {
+        app.debug('Using identity from signalk-reticulum plugin (app.plugins)');
+        return reticulumPlugin.identity;
+      }
+    }
+  } catch (error) {
+    app.debug(`Could not access signalk-reticulum via app.plugins: ${error.message}`);
+  }
+  
+  try {
+    if (app.pluginManager && app.pluginManager.plugins) {
+      const reticulumPlugin = app.pluginManager.plugins.get('signalk-reticulum');
+      if (reticulumPlugin && reticulumPlugin.identity) {
+        app.debug('Using identity from signalk-reticulum plugin (app.pluginManager)');
+        return reticulumPlugin.identity;
+      }
+    }
+  } catch (error) {
+    app.debug(`Could not access signalk-reticulum via pluginManager: ${error.message}`);
+  }
+  
+  // Try to read from common Reticulum identity locations
+  const commonPaths = [
+    path.join(process.env.HOME || process.env.USERPROFILE || '', '.reticulum', 'identity'),
+    path.join('/', 'var', 'lib', 'reticulum', 'identity'),
+    path.join(process.cwd(), '.reticulum', 'identity')
+  ];
+  
+  for (const testPath of commonPaths) {
+    try {
+      await fs.access(testPath, fs.constants.R_OK);
+      const keyData = await fs.readFile(testPath, 'utf-8');
+      const privateKeyHex = keyData.trim();
+      const privateKey = fromHex(privateKeyHex);
+      const identity = await Identity.fromBytes(privateKey);
+      app.debug(`Loaded identity from common location: ${testPath}`);
+      return identity;
+    } catch (error) {
+      // Continue to next path
+    }
+  }
+  
+  app.debug('No Reticulum identity found - Winlink signing will be unavailable');
+  return null;
+}
+
 // Sign message for Winlink transmission using Reticulum Ed25519
-async function signForWinlink(content, identityHash) {
-  // This will be implemented when we integrate Reticulum identities
-  // For now, return a placeholder
+async function signForWinlink(content, identity) {
+  if (!identity) {
+    throw new Error('No identity provided for signing');
+  }
+  
+  const { toHex } = require('@reticulum/core');
+  
+  // Get identity hash (SHA-256 truncated to 16 bytes, hex-encoded)
+  const publicKey = await identity.getPublicKey();
+  const publicKeyHex = toHex(publicKey);
+  
+  // Sign the content using Ed25519
+  const contentBytes = Buffer.from(content, 'utf-8');
+  const signature = await identity.sign(contentBytes);
+  const sigHex = toHex(signature);
+  
   return {
-    metadata: `---BEGIN RETICULUM METADATA---\nIdentityHash: ${identityHash}\nAlgorithm: Ed25519\nSig: PLACEHOLDER\n---END RETICULUM METADATA---\n`,
+    metadata: `---BEGIN RETICULUM METADATA---\nIdentityHash: ${publicKeyHex}\nAlgorithm: Ed25519\nSig: ${sigHex}\n---END RETICULUM METADATA---\n`,
     content: `---BEGIN BLOG POST---\n${content}\n---END BLOG POST---`
   };
 }
@@ -432,9 +554,18 @@ module.exports = (app) => {
   plugin.name = 'Offshore Blogging';
   plugin.description = 'Encode blog posts and weather requests for low-bandwidth satellite transmission';
 
-  plugin.start = (options) => {
+  plugin.start = async (options) => {
     // Store configuration for later use
     plugin.config = options || {};
+    
+    // Load Reticulum identity for Winlink signing
+    plugin.identity = await loadReticulumIdentity(app, options.reticulumIdentityPath);
+    if (plugin.identity) {
+      app.debug('Reticulum identity loaded for Winlink signing');
+    } else {
+      app.debug('No Reticulum identity available - Winlink signing disabled');
+    }
+    
     app.debug('Offshore Blogging plugin started');
     app.setPluginStatus('Ready');
   };
@@ -531,7 +662,31 @@ module.exports = (app) => {
           includeImages // Pass list of images to include
         );
 
-        res.json(result);
+        // Also generate Winlink signed content if identity is available
+        let winlinkData = null;
+        if (plugin.identity) {
+          try {
+            const markdownPath = filename.endsWith('.md')
+              ? path.join(blogPath, '_logs', filename)
+              : path.join(blogPath, '_logs', `${filename}.md`);
+            const markdown = await fs.readFile(markdownPath, 'utf-8');
+            const { title, date, body } = parseFrontMatter(markdown);
+            const content = `${title}\n\n${body}`;
+            const signed = await signForWinlink(content, plugin.identity);
+            winlinkData = {
+              metadata: signed.metadata,
+              content: signed.content,
+              identityHash: toHex(await plugin.identity.getPublicKey())
+            };
+          } catch (error) {
+            app.warn(`Could not generate Winlink content: ${error.message}`);
+            winlinkData = { error: error.message };
+          }
+        } else {
+          winlinkData = { error: 'No Reticulum identity available' };
+        }
+
+        res.json({ ...result, winlink: winlinkData });
       } catch (error) {
         app.error(`Encode error: ${error.message}`);
         res.status(500).json({ error: error.message });
@@ -572,14 +727,36 @@ module.exports = (app) => {
     // API: Sign for Winlink
     router.post('/api/sign', async (req, res) => {
       try {
-        const { content, identityHash } = req.body;
+        const { filename } = req.body;
 
-        if (!content || !identityHash) {
-          return res.status(400).json({ error: 'content and identityHash are required' });
+        if (!filename) {
+          return res.status(400).json({ error: 'filename is required' });
         }
 
-        const result = await signForWinlink(content, identityHash);
-        res.json(result);
+        if (!plugin.identity) {
+          return res.status(503).json({ error: 'No Reticulum identity available for signing. Configure reticulumIdentityPath or ensure signalk-reticulum plugin is installed.' });
+        }
+
+        // Get blog path and read the post
+        const blogPath = plugin.config?.blogSyncPath || '/home/pi/log';
+        const dictPath = plugin.config?.dictionaryPath || null;
+        const markdownPath = filename.endsWith('.md')
+          ? path.join(blogPath, '_logs', filename)
+          : path.join(blogPath, '_logs', `${filename}.md`);
+
+        const markdown = await fs.readFile(markdownPath, 'utf-8');
+        const { title, date, body } = parseFrontMatter(markdown);
+
+        // Format as plain text email body
+        const content = `${title}\n\n${body}`;
+
+        const result = await signForWinlink(content, plugin.identity);
+
+        res.json({
+          metadata: result.metadata,
+          content: result.content,
+          identityHash: toHex(await plugin.identity.getPublicKey())
+        });
       } catch (error) {
         app.error(`Sign error: ${error.message}`);
         res.status(500).json({ error: error.message });

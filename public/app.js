@@ -56,15 +56,6 @@ class OffshoreBloggingUI {
     }
 
     document.getElementById('encodeBtn').addEventListener('click', () => this.encodeBlogPost());
-
-    const versionBtns = document.querySelectorAll('.version-btn');
-    versionBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        versionBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.renderMessages(btn.dataset.version);
-      });
-    });
   }
 
   initWeatherTab() {
@@ -164,6 +155,14 @@ class OffshoreBloggingUI {
     }
   }
 
+  escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  escapeForAttribute(str) {
+    return str.replace(/'/g, "\\'").replace(/\\/g, '\\\\');
+  }
+
   showEncodeResults(data, previewData) {
     const resultsDiv = document.getElementById('encodeResults');
     resultsDiv.style.display = 'block';
@@ -171,8 +170,8 @@ class OffshoreBloggingUI {
     document.getElementById('statTextMessages').textContent = data.textMessages.length;
     document.getElementById('statImageMessages').textContent = data.imageMessages.length;
 
-    // Remove any existing messages but keep image preview section
-    resultsDiv.querySelectorAll('.info, .error, .success, .image-preview-section').forEach(el => el.remove());
+    // Remove any existing messages, method sections, and image preview sections
+    resultsDiv.querySelectorAll('.info, .error, .success, .image-preview-section, .method-section').forEach(el => el.remove());
 
     // Show image previews if available
     if (previewData && previewData.previews && previewData.previews.length > 0) {
@@ -216,19 +215,78 @@ class OffshoreBloggingUI {
     const summary = document.createElement('div');
     summary.className = 'info';
     if (data.foundImages > 0) {
-      summary.textContent = `Found ${data.foundImages} image(s). Choose "Text+Image" to include them or "Text Only" for messages only.`;
+      summary.textContent = `Found ${data.foundImages} image(s). Choose transmission method below:`;
     } else {
-      summary.textContent = 'No images found in this post.';
+      summary.textContent = 'No images found in this post. Choose transmission method below:';
     }
     resultsDiv.insertBefore(summary, resultsDiv.firstChild);
+
+    // Create transmission method selector
+    const methodSection = document.createElement('div');
+    methodSection.className = 'card method-section';
+    methodSection.innerHTML = '<h3>Transmission Method</h3>';
+
+    const methodsDiv = document.createElement('div');
+    methodsDiv.innerHTML = `
+      <div class="version-selector">
+        <button class="version-btn active" data-version="text">Text Only (InReach)</button>
+        <button class="version-btn" data-version="image">Text + Image (InReach)</button>
+        <button class="version-btn" data-version="winlink">Winlink (Signed)</button>
+      </div>
+      <div id="messagesContainer" class="message-list"></div>
+    `;
+
+    resultsDiv.appendChild(methodsDiv);
+
+    // Set up version buttons
+    const versionBtns = methodsDiv.querySelectorAll('.version-btn');
+    versionBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        versionBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.renderMessages(btn.dataset.version);
+        e.stopPropagation();
+      });
+    });
 
     // Render with default (text-only) version
     this.renderMessages('text');
   }
 
   renderMessages(version) {
-    const list = document.getElementById('messageList');
+    const list = document.getElementById('messagesContainer');
+    if (!list) return;
     list.innerHTML = '';
+
+    if (version === 'winlink') {
+      if (!this.currentEncodeResult.winlink) {
+        list.innerHTML = '<div class="error">Winlink data not available</div>';
+        return;
+      }
+      if (this.currentEncodeResult.winlink.error) {
+        list.innerHTML = `<div class="error">Winlink unavailable: ${this.escapeHtml(this.currentEncodeResult.winlink.error)}</div>`;
+        return;
+      }
+      const winlinkData = this.currentEncodeResult.winlink;
+      list.innerHTML = `
+        <p style="margin-bottom: 10px; color: var(--highlight-color);">
+          <strong>Subject:</strong> Blog Post via Vara HF
+        </p>
+        <p style="margin-bottom: 10px;">Copy the following and paste into a new Winlink email:</p>
+        <div class="message-item">
+          <div class="message-content" style="white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(winlinkData.metadata)}</div>
+          <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(winlinkData.metadata)}', this)">Copy Metadata</button>
+        </div>
+        <div class="message-item">
+          <div class="message-content" style="white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(winlinkData.content)}</div>
+          <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(winlinkData.content)}', this)">Copy Content</button>
+        </div>
+        <p style="color: #888; font-size: 0.85rem; margin-top: 10px;">
+          <strong>Identity Hash:</strong> ${winlinkData.identityHash}
+        </p>
+      `;
+      return;
+    }
 
     let messages = [];
     let messageText = '';
@@ -239,21 +297,6 @@ class OffshoreBloggingUI {
     } else if (version === 'image') {
       messages = [...this.currentEncodeResult.textMessages, ...this.currentEncodeResult.imageMessages];
       messageText = `${this.currentEncodeResult.totalMessages} message(s) - copy each to Garmin Messenger`;
-    } else if (version === 'winlink') {
-      // TODO: Generate Winlink signed format
-      const title = this.currentEncodeResult.title;
-      const date = this.currentEncodeResult.date;
-      const body = this.currentEncodeResult.textMessages.join('\n'); // Simplified
-
-      messageText = 'Winlink format - attach markdown file to Winlink message';
-      list.innerHTML = `
-        <div class="info">
-          <p><strong>Winlink Format</strong></p>
-          <p>For Winlink, attach the original markdown file directly. Winlink's B2F compression handles the rest.</p>
-          <p>Estimated transmit time: ~${this.currentEncodeResult.totalMessages * 2} minutes at 300 baud</p>
-        </div>
-      `;
-      return;
     }
 
     const info = document.createElement('div');
@@ -266,16 +309,15 @@ class OffshoreBloggingUI {
       item.className = 'message-item';
       item.innerHTML = `
         <div class="message-number">${i + 1}/${messages.length}</div>
-        <div class="message-content">${msg}</div>
-        <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard('${msg}')">Copy</button>
+        <div class="message-content">${this.escapeHtml(msg)}</div>
+        <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(msg)}', this)">Copy</button>
       `;
       list.appendChild(item);
     });
   }
 
-  static copyToClipboard(text) {
+  static copyToClipboard(text, btn) {
     navigator.clipboard.writeText(text).then(() => {
-      const btn = event.target;
       btn.textContent = 'Copied!';
       btn.classList.add('copied');
       setTimeout(() => {
@@ -312,8 +354,8 @@ class OffshoreBloggingUI {
         <p>Copy the following message and send via InReach to your cloud server:</p>
       </div>
       <div class="message-item">
-        <div class="message-content">${request}</div>
-        <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard('${request}')">Copy</button>
+        <div class="message-content">${this.escapeHtml(request)}</div>
+        <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard(\'${this.escapeForAttribute(request)}\', this)">Copy</button>
       </div>
       ${estimatedMsgs > 10 ? `
         <div class="error">
@@ -333,7 +375,7 @@ class OffshoreBloggingUI {
     // Validate chunk format
     const match = chunk.match(/^([0-9A-Za-z]{4})([TI])(\d{2})(\d{2})([0-9a-f]{4}):(.*)$/);
     if (!match) {
-      alert('Invalid chunk format. Expected: <postid:4><type:1><idx:2><total:2><crc:4>:<base85 data>');
+      alert('Invalid chunk format. Expected: <postid:4><type:1><idx:2><total:2><crc:4>:<base64 data>');
       return;
     }
 
@@ -446,7 +488,7 @@ class OffshoreBloggingUI {
               <h4>Post ${group.postid} (Text)</h4>
               <p><strong>Title:</strong> ${data.title}</p>
               <p><strong>Date:</strong> ${data.date}</p>
-              <textarea class="code-block" readonly>${data.body}</textarea>
+              <textarea class="code-block" readonly>${this.escapeHtml(data.body)}</textarea>
             </div>
           `;
         } else if (group.type === 'I') {
@@ -461,7 +503,7 @@ class OffshoreBloggingUI {
         html += `
           <div class="error">
             <h4>Post ${group.postid} (${group.type === 'T' ? 'Text' : 'Image'})</h4>
-            <p>${error.message}</p>
+            <p>${this.escapeHtml(error.message)}</p>
           </div>
         `;
       }
