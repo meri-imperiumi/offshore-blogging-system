@@ -9,6 +9,7 @@ When planning new work, there should always be a corresponding work document cre
 ## Boundaries
 
 - ✅ **Always**: write at least smoketests for any new functionality
+- ✅ **Always**: fix formatting with `npm run format` (in Android/Termux `biome check --use-editorconfig=true --write packages/*/src packages/*/test examples`) after any changes to source files or tests
 - ✅ **Always**: Use `git mv` instead of `mv' for renaming files
 - ⚠️ **Ask first**: adding dependencies
 - ⚠️ **Ask first**: modify CI config
