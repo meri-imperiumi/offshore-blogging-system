@@ -268,7 +268,11 @@ describe("InReachClient.send", () => {
 
 describe("InReachClient.isShareUrl", () => {
   it("recognizes an inreachlink.com share URL", () => {
-    assert.ok(InReachClient.isShareUrl("https://inreachlink.com/gBw0nPHdcVHWpY_iwR4kt6w"));
+    assert.ok(
+      InReachClient.isShareUrl(
+        "https://inreachlink.com/gBw0nPHdcVHWpY_iwR4kt6w",
+      ),
+    );
     assert.ok(InReachClient.isShareUrl("http://inreachlink.com/abcDEF_-123"));
     assert.ok(InReachClient.isShareUrl("https://www.inreachlink.com/code"));
   });
@@ -484,9 +488,15 @@ describe("InReachClient retry/backoff", () => {
   });
 
   it("isRetryableError flags NETWORK_ERROR", () => {
-    assert.ok(InReachClient.isRetryableError(new InReachError("x", "NETWORK_ERROR")));
-    assert.ok(!InReachClient.isRetryableError(new InReachError("x", "BAD_URL")));
-    assert.ok(!InReachClient.isRetryableError(new InReachError("x", "NOT_CONFIGURED")));
+    assert.ok(
+      InReachClient.isRetryableError(new InReachError("x", "NETWORK_ERROR")),
+    );
+    assert.ok(
+      !InReachClient.isRetryableError(new InReachError("x", "BAD_URL")),
+    );
+    assert.ok(
+      !InReachClient.isRetryableError(new InReachError("x", "NOT_CONFIGURED")),
+    );
   });
 
   it("parseRetryAfter handles seconds, HTTP-date, and fallback", () => {

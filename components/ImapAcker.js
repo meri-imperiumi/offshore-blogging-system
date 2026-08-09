@@ -115,7 +115,8 @@ class ImapAcker extends Component {
     }
     if (input.hasData("port")) {
       const port = input.getData("port");
-      this.imapConfig.port = typeof port === "string" ? parseInt(port, 10) : port;
+      this.imapConfig.port =
+        typeof port === "string" ? parseInt(port, 10) : port;
     }
     if (input.hasData("username")) {
       this.imapConfig.user = input.getData("username");

@@ -92,9 +92,7 @@ class AuthVerifier extends Component {
           `[AuthVerifier] InReach verified, confidence=${msg.confidence}, replyTo=${replyUrl}`,
         );
       } else {
-        console.log(
-          `[AuthVerifier] InReach verified but no reply URL found`,
-        );
+        console.log(`[AuthVerifier] InReach verified but no reply URL found`);
       }
 
       if (msg.confidence === "none") {

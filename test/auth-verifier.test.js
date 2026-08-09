@@ -29,8 +29,7 @@ describe("AuthVerifier.extractInReachReplyUrl", () => {
     // The real email code contains `_` which the old regex truncated at.
     const v = makeVerifier();
     const email = {
-      body:
-        "PING\r\n\r\nView the location or send a reply to Henri Bergius:\r\nhttps://inreachlink.com/gBw0nPHdcVHWpY_iwR4kt6w\r\n\r\nDo not reply directly to this message.",
+      body: "PING\r\n\r\nView the location or send a reply to Henri Bergius:\r\nhttps://inreachlink.com/gBw0nPHdcVHWpY_iwR4kt6w\r\n\r\nDo not reply directly to this message.",
     };
     assert.strictEqual(
       v.extractInReachReplyUrl(email),
@@ -42,8 +41,7 @@ describe("AuthVerifier.extractInReachReplyUrl", () => {
     // Long lines in quoted-printable MIME are soft-broken with trailing `=`.
     const v = makeVerifier();
     const email = {
-      body:
-        "View the location:\r\nhttps://inreachlink.com/gBw0nPHdcVHWpY_iwR4kt6w",
+      body: "View the location:\r\nhttps://inreachlink.com/gBw0nPHdcVHWpY_iwR4kt6w",
     };
     assert.strictEqual(
       v.extractInReachReplyUrl(email),
@@ -54,8 +52,7 @@ describe("AuthVerifier.extractInReachReplyUrl", () => {
   it("prefers a direct explore.garmin.com reply endpoint", () => {
     const v = makeVerifier();
     const email = {
-      body:
-        "https://inreachlink.com/abc\r\nhttps://explore.garmin.com/TextMessage/TxtMsg?extId=GUID&adr=x",
+      body: "https://inreachlink.com/abc\r\nhttps://explore.garmin.com/TextMessage/TxtMsg?extId=GUID&adr=x",
     };
     assert.strictEqual(
       v.extractInReachReplyUrl(email),
@@ -66,8 +63,7 @@ describe("AuthVerifier.extractInReachReplyUrl", () => {
   it("matches the new eur.explore.garmin.com endpoint", () => {
     const v = makeVerifier();
     const email = {
-      body:
-        "https://eur.explore.garmin.com/textmessage/txtmsg?extId=CODE123",
+      body: "https://eur.explore.garmin.com/textmessage/txtmsg?extId=CODE123",
     };
     assert.strictEqual(
       v.extractInReachReplyUrl(email),

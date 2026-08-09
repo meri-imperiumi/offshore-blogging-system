@@ -56,7 +56,7 @@ class GithubPusher extends Component {
     this.branch = "main";
   }
 
-  async handle(input, output) {
+  handle(input, output) {
     // Process control ports
     if (input.hasData("repo_path")) {
       this.repoPath = input.getData("repo_path");
@@ -68,9 +68,12 @@ class GithubPusher extends Component {
       this.branch = input.getData("branch");
     }
 
-    // Wait for IN port
+    // Sync `return` (not `return null`): in an async handle, `return null`
+    // resolves the promise and NoFlo calls output.sendDone(null), forwarding
+    // null to the out port. A sync handle's `return` yields undefined, which
+    // NoFlo treats as "preconditions not met" without sending anything.
     if (!input.hasData("in")) {
-      return null;
+      return;
     }
 
     const msg = input.getData("in");
@@ -82,9 +85,16 @@ class GithubPusher extends Component {
 
     // Validate required settings
     if (!this.repoPath) {
-      return null;
+      return;
     }
 
+    // Delegate async work to a helper so handle() returns undefined (not a
+    // Promise). If handle() were async, NoFlo would call
+    // output.sendDone(resolvedValue) on resolve, causing a duplicate send.
+    this._doPush(msg, output);
+  }
+
+  async _doPush(msg, output) {
     try {
       const git = new GitHelper(this.repoPath);
 
@@ -109,11 +119,11 @@ class GithubPusher extends Component {
           payload: "GitHub push completed with hi-fi assets",
         };
 
-        return output.sendDone(confirmMsg);
+        output.sendDone(confirmMsg);
+      } else {
+        // No changes to push - no-op
+        output.sendDone(msg);
       }
-
-      // No changes to push - no-op
-      return output.sendDone(msg);
     } catch (err) {
       // Push errors should be notified
       const errorResult = {
@@ -127,7 +137,7 @@ class GithubPusher extends Component {
         payload: `GitHub push failed: ${err.message}`,
       };
 
-      return output.send({ error: errorResult });
+      output.send({ error: errorResult });
     }
   }
 }

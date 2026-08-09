@@ -9,6 +9,12 @@ const SmtpClient = require("../lib/SmtpClient");
  * - Renders a short plaintext body from msg.payload or notifyText field
  * - Sends via the configured SMTP server to msg.replyTo
  * - Used for Winlink replies and Saildocs outbound requests
+ *
+ * NOTE: handle() is intentionally NOT async. NoFlo's handleIP wraps async
+ * process functions so that when the returned Promise resolves, it calls
+ * output.sendDone(resolvedValue). If the handle already called sendDone()
+ * internally, this causes a duplicate send on the out port. Using a sync
+ * handle with .then()/.catch() callbacks avoids this.
  */
 class SmtpResponder extends Component {
   constructor() {
@@ -64,7 +70,7 @@ class SmtpResponder extends Component {
     this.smtpPass = null;
   }
 
-  async handle(input, output) {
+  handle(input, output) {
     // Process control ports
     if (input.hasData("smtp_host")) {
       this.smtpHost = input.getData("smtp_host");
@@ -79,9 +85,12 @@ class SmtpResponder extends Component {
       this.smtpPass = input.getData("smtp_pass");
     }
 
-    // Wait for IN port
+    // Sync `return` (not `return null`): in an async handle, `return null`
+    // resolves the promise and NoFlo calls output.sendDone(null), forwarding
+    // null to the out port. A sync handle's `return` yields undefined, which
+    // NoFlo treats as "preconditions not met" without sending anything.
     if (!input.hasData("in")) {
-      return null;
+      return;
     }
 
     const msg = input.getData("in");
@@ -91,9 +100,26 @@ class SmtpResponder extends Component {
       return output.sendDone(msg);
     }
 
-    // Build email body
+    // Determine the envelope recipient. GribFetcher's Saildocs OUTBOX sets
+    // `to` (and `replyTo`) explicitly; notification replies set only `replyTo`.
+    const recipient = msg.to || msg.replyTo;
+    if (!recipient) {
+      return output.send({
+        error: {
+          ...msg,
+          errors: [
+            { message: "SMTP send failed: no recipient (msg.to/msg.replyTo)" },
+          ],
+        },
+      });
+    }
+
+    // Body: honor an explicit `body` (Saildocs request, pre-terminated), then
+    // notifyText, then payload, then a placeholder.
     let body = "";
-    if (msg.notifyText) {
+    if (msg.body) {
+      body = msg.body;
+    } else if (msg.notifyText) {
       body = msg.notifyText;
     } else if (msg.payload) {
       body =
@@ -104,10 +130,13 @@ class SmtpResponder extends Component {
       body = "(no message)";
     }
 
-    // Build subject
+    // Subject: honor an explicit `subject` (Saildocs request), else derive from
+    // notifyText/payload, else "Notification".
     let subject = "Notification";
-    if (msg.notifyText) {
-      subject = msg.notifyText.split("\n")[0]; // Use first line as subject
+    if (msg.subject) {
+      subject = msg.subject;
+    } else if (msg.notifyText) {
+      subject = msg.notifyText.split("\n")[0];
     } else if (msg.payload) {
       const payloadStr =
         typeof msg.payload === "string"
@@ -116,30 +145,34 @@ class SmtpResponder extends Component {
       subject = payloadStr.split("\n")[0].substring(0, 50);
     }
 
-    try {
-      // Create SMTP client and send
-      const client = new SmtpClient(this.smtpHost, this.smtpPort, {
-        user: this.smtpUser,
-        password: this.smtpPass,
+    // Create SMTP client and send asynchronously. Using .then()/.catch()
+    // instead of async/await so that handle() returns undefined (not a
+    // Promise). If it returned a Promise, NoFlo would call
+    // output.sendDone(resolvedValue) on resolve, causing a duplicate send.
+    const client = new SmtpClient(this.smtpHost, this.smtpPort, {
+      user: this.smtpUser,
+      password: this.smtpPass,
+    });
+
+    client
+      .sendWithRetry(recipient, subject, body)
+      .then(() => {
+        // Pass through the message on success
+        output.sendDone(msg);
+      })
+      .catch((err) => {
+        // Send failed - return on error port. sendDone (not just send) so the
+        // activation is resolved and the network can deactivate cleanly.
+        const errorMsg = {
+          errors: [{ message: `SMTP send failed: ${err.message}` }],
+          identityHash: msg.identityHash,
+          replyTo: msg.replyTo,
+          channel: msg.channel,
+          intent: msg.intent,
+          payload: msg.payload,
+        };
+        output.sendDone({ error: errorMsg });
       });
-
-      await client.send(msg.replyTo, subject, body);
-
-      // Pass through the message
-      return output.sendDone(msg);
-    } catch (err) {
-      // Send failed - return on error port
-      const errorMsg = {
-        errors: [{ message: `SMTP send failed: ${err.message}` }],
-        identityHash: msg.identityHash,
-        replyTo: msg.replyTo,
-        channel: msg.channel,
-        intent: msg.intent,
-        payload: msg.payload,
-      };
-
-      return output.send({ error: errorMsg });
-    }
   }
 }
 

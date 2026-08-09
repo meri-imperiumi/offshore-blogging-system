@@ -61,9 +61,10 @@ class GribFetcher extends Component {
 
     const msg = input.getData("in");
 
-    // Check for failed messages
+    // Check for failed messages. GribFetcher has no `out` port, so failed
+    // assemblies are dropped here rather than forwarded.
     if (failed(msg)) {
-      return output.sendDone(msg);
+      return output.done();
     }
 
     try {
@@ -79,18 +80,22 @@ class GribFetcher extends Component {
       return this.handleLocalFetch(msg, payload, output);
     } catch (err) {
       fail(msg, new Error(`GRIB fetch failed: ${err.message}`));
-      return output.sendDone(msg);
+      return output.done();
     }
   }
 
   handleSaildocsRequest(msg, payload, output) {
-    const parts = payload.substring(5).split(":");
-    if (parts.length !== 2) {
+    // Format: "send <email>:<query>". Split on the FIRST colon only — the
+    // query itself contains colons (e.g. "gfs:10N,20N,...|..."), so a naive
+    // split(":") would over-split and reject every real request.
+    const rest = payload.substring(5);
+    const colonIdx = rest.indexOf(":");
+    if (colonIdx === -1) {
       fail(msg, new Error("Invalid Saildocs request format"));
-      return output.sendDone(msg);
+      return output.done();
     }
-
-    const [email, query] = parts;
+    const email = rest.substring(0, colonIdx);
+    const query = rest.substring(colonIdx + 1);
 
     // Generate unique query ID
     const queryId = crypto.randomBytes(8).toString("hex");
@@ -103,17 +108,25 @@ class GribFetcher extends Component {
       msg.channel, // PERSIST: for eventual reply routing
     );
 
-    // Build outbound email message
+    // Saildocs silently ignores emails whose body isn't terminated by a line
+    // of five or more dashes (an anti-spam measure; see cloud.md §4). Append
+    // the terminator on every outbound request, not just translated ones.
+    const terminatedBody = `${query}\n-----`;
+
+    // Build outbound email message. `replyTo` carries the Saildocs address so
+    // SmtpResponder (which reads msg.replyTo) addresses the request there;
+    // this is a new outbound request, not a reply to the original sender.
     const outboundMsg = {
       to: email,
+      replyTo: email,
       subject: `Your query: ${queryId}`,
-      body: query,
-      text: query,
+      body: terminatedBody,
+      text: terminatedBody,
       // Mark as Saildocs outbound (not a reply to sender)
       isOutboundRequest: true,
     };
 
-    return output.send({ outbox: outboundMsg });
+    return output.sendDone({ outbox: outboundMsg });
   }
 
   handleLocalFetch(msg, payload, output) {
@@ -121,7 +134,9 @@ class GribFetcher extends Component {
     // For now, return a mock response
 
     fail(msg, new Error("Local GRIB API not yet implemented - use Saildocs"));
-    return output.sendDone(msg);
+    // GribFetcher has no `out`/error port (the production graph drops
+    // failures), so just deactivate without forwarding.
+    return output.done();
   }
 
   shutdown() {

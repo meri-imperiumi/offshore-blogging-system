@@ -94,7 +94,7 @@ class AlertComposer extends Component {
     this.lastAlert = {};
   }
 
-  async handle(input, output) {
+  handle(input, output) {
     // Process control ports
     if (input.hasData("alertaddress")) {
       this.alertAddress = input.getData("alertaddress");
@@ -103,9 +103,12 @@ class AlertComposer extends Component {
       this.rateLimitMs = input.getData("ratelimitms");
     }
 
-    // Wait for IN port
+    // Sync `return` (not `return null`): in an async handle, `return null`
+    // resolves the promise and NoFlo calls output.sendDone(null), forwarding
+    // null to the out port. A sync handle's `return` yields undefined, which
+    // NoFlo treats as "preconditions not met" without sending anything.
     if (!input.hasData("in")) {
-      return null;
+      return;
     }
 
     const msg = input.getData("in");

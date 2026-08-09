@@ -2,7 +2,7 @@
 
 /**
  * Ping-Pong Test Runner
- * 
+ *
  * Basic end-to-end test for InReach communication using NoFlo
  *
  * Flow: RunInterval -> ImapFetcher -> AuthVerifier -> PongHandler -> InReachSender -> ImapAcker
@@ -139,8 +139,6 @@ noflo
 
     // Get process instances (synchronous, available after connect)
     const verifierProc = network.getNode("Verifier");
-    const pongProc = network.getNode("PongHandler");
-    const senderProc = network.getNode("Sender");
 
     // Inject database into AuthVerifier for device lookup
     if (verifierProc && verifierProc.component) {
@@ -148,11 +146,27 @@ noflo
       console.log("[Setup] Injected DB into AuthVerifier");
     }
 
-    // Listen for verified messages from AuthVerifier
-    // AuthVerifier only has an `out` port; failures come through with msg.failed
-    if (verifierProc && verifierProc.component) {
-      verifierProc.component.outPorts.out.on("data", (msg) => {
-        if (msg && msg.failed) {
+    // Monitor packet flow via the network 'ip' event.
+    //
+    // NoFlo's OutPort doesn't forward socket 'data' events to port listeners
+    // (only InPort does), so `outPorts.X.on('data')` never fires — the
+    // previous per-port listeners were dead code. The network-level 'ip'
+    // event fires for every packet on every socket, so we route all
+    // monitoring through a single handler that dispatches by source node.
+    network.on("ip", (packet) => {
+      if (packet.type !== "data") return;
+      const from = packet.socket.from
+        ? `${packet.socket.from.process.id}.${packet.socket.from.port}`
+        : "?";
+      const to = packet.socket.to
+        ? `${packet.socket.to.process.id}.${packet.socket.to.port}`
+        : "?";
+      const msg = packet.data;
+      if (!msg) return;
+
+      // AuthVerifier -> PongHandler: verified (or failed) InReach message.
+      if (from === "Verifier.out") {
+        if (msg.failed) {
           console.error("[Verifier ERROR] Verification failed");
           if (msg.errors) {
             msg.errors.forEach((e) =>
@@ -161,19 +175,17 @@ noflo
           }
           return;
         }
-        if (msg && msg.channel === "inreach") {
+        if (msg.channel === "inreach") {
           console.log(
             `[Verifier] Device: ${msg.identityHash}, Payload: ${String(msg.payload).substring(0, 50)}`,
           );
         }
-      });
-    }
+        return;
+      }
 
-    // Listen for PONG responses from PongHandler
-    // PongHandler only has an `out` port; failures come through with msg.failed
-    if (pongProc && pongProc.component) {
-      pongProc.component.outPorts.out.on("data", (msg) => {
-        if (msg && msg.failed) {
+      // PongHandler -> InReachSender: the PONG reply.
+      if (from === "PongHandler.out") {
+        if (msg.failed) {
           console.error("[PongHandler ERROR] Could not build PONG");
           if (msg.errors) {
             msg.errors.forEach((e) =>
@@ -183,30 +195,32 @@ noflo
           return;
         }
         console.log(`[PongHandler] Sending: ${msg.payload}`);
-        if (msg && msg.payload === "PONG") {
+        if (msg.payload === "PONG") {
           console.log("");
           console.log("=== PING received, PONG sent! ===");
           console.log("Check your InReach device for the PONG message");
           console.log("");
         }
-      });
-    }
+        return;
+      }
 
-    // Listen for InReachSender output/errors
-    // InReachSender has both `out` and `error` ports
-    if (senderProc && senderProc.component) {
-      senderProc.component.outPorts.out.on("data", (msg) => {
+      // InReachSender -> ImapAcker: send succeeded.
+      if (from === "Sender.out") {
         console.log("[InReachSender] Response sent successfully");
-      });
-      senderProc.component.outPorts.error.on("data", (msg) => {
+        return;
+      }
+
+      // InReachSender.error: send failed.
+      if (from === "Sender.error") {
         console.error("[InReachSender ERROR]");
-        if (msg && msg.errors) {
+        if (msg.errors) {
           msg.errors.forEach((e) =>
             console.error(`  - ${e.code || "error"}: ${e.message}`),
           );
         }
-      });
-    }
+        return;
+      }
+    });
 
     console.log("Waiting for PING message...");
     console.log("Send 'PING' from your InReach device");

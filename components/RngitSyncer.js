@@ -56,7 +56,7 @@ class RngitSyncer extends Component {
     this.branch = "main";
   }
 
-  async handle(input, output) {
+  handle(input, output) {
     // Process control ports
     if (input.hasData("repo_path")) {
       this.repoPath = input.getData("repo_path");
@@ -74,10 +74,21 @@ class RngitSyncer extends Component {
     }
 
     // Validate required settings
+    // Sync `return` (not `return null`): in an async handle, `return null`
+    // resolves the promise and NoFlo calls output.sendDone(null), forwarding
+    // null to the out port. A sync handle's `return` yields undefined, which
+    // NoFlo treats as "preconditions not met" without sending anything.
     if (!this.repoPath || !this.rngitRemote) {
-      return null;
+      return;
     }
 
+    // Delegate async work to a helper so handle() returns undefined (not a
+    // Promise). If handle() were async, NoFlo would call
+    // output.sendDone(resolvedValue) on resolve, causing a duplicate send.
+    this._doSync(output);
+  }
+
+  async _doSync(output) {
     try {
       const git = new GitHelper(this.repoPath);
 
@@ -106,11 +117,11 @@ class RngitSyncer extends Component {
           payload: "Rngit sync completed - hi-fi assets merged",
         };
 
-        return output.sendDone(result);
+        output.sendDone(result);
+      } else {
+        // No changes to merge
+        output.done();
       }
-
-      // No changes to merge
-      return null;
     } catch (err) {
       // Don't fail the graph for sync errors - just notify
       const errorResult = {
@@ -124,7 +135,7 @@ class RngitSyncer extends Component {
         payload: `Rngit sync failed: ${err.message}`,
       };
 
-      return output.send({ error: errorResult });
+      output.send({ error: errorResult });
     }
   }
 }

@@ -57,7 +57,7 @@ class GitPublisher extends Component {
     this.branch = "main";
   }
 
-  async handle(input, output) {
+  handle(input, output) {
     // Process control ports
     if (input.hasData("repo_path")) {
       this.repoPath = input.getData("repo_path");
@@ -69,9 +69,12 @@ class GitPublisher extends Component {
       this.branch = input.getData("branch");
     }
 
-    // Wait for IN port
+    // Sync `return` (not `return null`): in an async handle, `return null`
+    // resolves the promise and NoFlo calls output.sendDone(null), forwarding
+    // null to the out port. A sync handle's `return` yields undefined, which
+    // NoFlo treats as "preconditions not met" without sending anything.
     if (!input.hasData("in")) {
-      return null;
+      return;
     }
 
     const msg = input.getData("in");
@@ -93,6 +96,13 @@ class GitPublisher extends Component {
       return output.sendDone(msg);
     }
 
+    // Delegate async work to a helper so handle() returns undefined (not a
+    // Promise). If handle() were async, NoFlo would call
+    // output.sendDone(resolvedValue) on resolve, causing a duplicate send.
+    this._doPublish(msg, blogData, output);
+  }
+
+  async _doPublish(msg, blogData, output) {
     try {
       const git = new GitHelper(this.repoPath);
 
@@ -144,7 +154,6 @@ class GitPublisher extends Component {
         await git.push(this.githubRemote, this.branch);
       }
 
-      // Build confirmation message
       const confirmMsg = {
         errors: [],
         identityHash: msg.identityHash,
@@ -155,10 +164,10 @@ class GitPublisher extends Component {
         notifyText: `Published: ${blogData.title}`,
       };
 
-      return output.sendDone(confirmMsg);
+      output.sendDone(confirmMsg);
     } catch (err) {
       fail(msg, new Error(`Git publish failed: ${err.message}`));
-      return output.sendDone(msg);
+      output.sendDone(msg);
     }
   }
 

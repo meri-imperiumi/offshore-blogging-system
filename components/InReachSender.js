@@ -213,9 +213,7 @@ class InReachSender extends Component {
     confirm.intent = "NOTIFY";
     confirm.payload = `Sent ${chunkCount} message(s) via InReach`;
     confirm.notifyText = `InReach: ${chunkCount} messages sent`;
-    console.log(
-      `[InReachSender] Successfully sent ${chunkCount} message(s)`,
-    );
+    console.log(`[InReachSender] Successfully sent ${chunkCount} message(s)`);
     output.sendDone(confirm);
   }
 

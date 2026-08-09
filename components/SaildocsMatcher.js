@@ -27,9 +27,15 @@ class SaildocsMatcher extends Component {
         },
       },
       outPorts: {
+        direct: {
+          datatype: "object",
+          description:
+            "Assembly message for downstream processing (GRIB chunking, Gate, etc.)",
+        },
         out: {
           datatype: "object",
-          description: "Assembly message with restored routing context",
+          description:
+            "Assembly message restored to original channel (ReplyDispatcher)",
         },
         missed: {
           datatype: "object",
@@ -67,31 +73,37 @@ class SaildocsMatcher extends Component {
     }
 
     try {
-      // Extract query ID from subject line
-      // Saildocs responses typically have subject like: "Your query: <query_id>"
+      // Extract query ID from subject line. Saildocs responses typically have
+      // subject like: "Your query: <query_id>" — but real Saildocs responses
+      // actually use the query string as the subject (e.g.
+      // "gfs:58n,60n,018e,022e"), so this match often fails. In that case,
+      // fall back to the most recent pending request (see below).
       const subject = email.subject || email.payload?.subject || "";
       const match = subject.match(/Your query:\s*(\S+)/i);
 
-      if (!match) {
-        // Not a Saildocs response - pass through to MISSED
-        return output.send({ missed: email });
+      let pending = null;
+      if (match) {
+        const queryId = match[1];
+        pending = this.db.getPendingSaildocs(queryId);
       }
 
-      const queryId = match[1];
-
-      // Look up pending query in database
-      const pending = this.db.getPendingSaildocs(queryId);
+      if (!pending) {
+        // No queryId in subject, or queryId not found. Fall back to the
+        // most recent pending request. This works because the offshore
+        // use case typically has only one request in flight at a time.
+        pending = this.db.getMostRecentPendingSaildocs();
+      }
 
       if (!pending) {
         // No matching pending query - might be expired or unknown
-        return output.send({ missed: email });
+        return output.sendDone({ missed: email });
       }
 
       // Extract binary attachment from email
       const attachment = email.payload?.attachment || email.attachment;
       if (!attachment) {
         // Saildocs response without attachment - treat as error
-        return output.send({
+        return output.sendDone({
           missed: {
             ...email,
             errors: [
@@ -114,16 +126,22 @@ class SaildocsMatcher extends Component {
       };
 
       // Clean up the pending entry
-      this.db.deletePendingSaildocs(queryId);
+      this.db.deletePendingSaildocs(pending.query_id);
 
-      return output.sendDone(result);
+      // Must specify port: SaildocsMatcher has three non-error out ports
+      // (direct, out, missed). sendDone(result) without a port map throws
+      // "Port must be specified for sending output".
+      return output.sendDone({
+        direct: result,
+        out: result,
+      });
     } catch (err) {
       // On processing error, send to MISSED
       email.errors = email.errors || [];
       email.errors.push({
         message: `Saildocs matching error: ${err.message}`,
       });
-      return output.send({ missed: email });
+      return output.sendDone({ missed: email });
     }
   }
 

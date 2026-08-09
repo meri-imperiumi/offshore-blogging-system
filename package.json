@@ -4,8 +4,8 @@
   "description": "Offshore blogging system for Signal K - encode blog posts and weather requests for low-bandwidth satellite transmission",
   "main": "plugin/index.js",
   "scripts": {
-    "lint": "npx @biomejs/biome check --use-editorconfig=true plugin/ public/ components/",
-    "format": "npx @biomejs/biome check --use-editorconfig=true --write plugin/ public/ components/ test/",
+    "lint": "npx @biomejs/biome check --use-editorconfig=true plugin/ public/ components/ lib/ scripts/",
+    "format": "npx @biomejs/biome check --use-editorconfig=true --write plugin/ public/ components/ test/ lib/ scripts/",
     "test": "node --test"
   },
   "repository": {

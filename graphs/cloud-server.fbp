@@ -42,7 +42,13 @@ GribFetcher OUTBOX -> IN SmtpResponder(SmtpResponder)
 
 # 6. Third-Party Bridge (Saildocs Ingestion)
 Router OUT[2] -> IN SaildocsMatcher(SaildocsMatcher)
-SaildocsMatcher OUT -> IN GribChunker
+# Direct path for GRIB processing (Gate, chunking, etc.)
+SaildocsMatcher DIRECT -> IN GribChunker(GribChunker)
+# Reply path via ReplyDispatcher (marks as seen after processing)
+SaildocsMatcher OUT -> IN ReplyDispatcher(ReplyDispatcher)
+ReplyDispatcher SMTP -> IN ImapAcker(ImapAcker)
+ReplyDispatcher INREACH -> IN ImapAcker(ImapAcker)
+ReplyDispatcher ERROR -> IN ErrorLogger(ErrorLogger)
 
 # 7. System Commands & The GRIB Gatekeeper
 'sys:command' -> PERMISSION SysAuth(DacarAuthorizer)

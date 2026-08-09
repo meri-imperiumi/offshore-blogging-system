@@ -126,7 +126,8 @@ class ImapFetcher extends Component {
     }
     if (input.hasData("port")) {
       const port = input.getData("port");
-      this.imapConfig.port = typeof port === "string" ? parseInt(port, 10) : port;
+      this.imapConfig.port =
+        typeof port === "string" ? parseInt(port, 10) : port;
     }
     if (input.hasData("username")) {
       this.imapConfig.user = input.getData("username");
@@ -286,7 +287,9 @@ class ImapFetcher extends Component {
       sender.endsWith("@garmin.com") ||
       sender.endsWith("@winlink.org") ||
       sender.includes("@wl2k") ||
-      sender === "query@saildocs.com"
+      // Saildocs responds from query-reply@saildocs.com (and
+      // query@saildocs.com for acknowledgements), so match the domain.
+      sender.endsWith("@saildocs.com")
     ) {
       return true;
     }

@@ -60,7 +60,9 @@ describe("ImapFetcher component", () => {
     const mockMessage = {
       uid: 1,
       envelope: {
-        from: [{ address: "no.reply.inreach@garmin.com", name: "Garmin InReach" }],
+        from: [
+          { address: "no.reply.inreach@garmin.com", name: "Garmin InReach" },
+        ],
         to: [{ address: "boat@example.com", name: "Boat" }],
         subject: "Test message from Garmin inReach",
         date: new Date("2024-01-15T12:00:00Z"),
@@ -89,7 +91,7 @@ describe("ImapFetcher component", () => {
     );
   });
 
-  it("emits InReach, Winlink, and Saildocs messages", () => {
+  it("emits all messages for Router to filter", () => {
     const component = ImapFetcherModule.getComponent();
 
     const makeEmail = (fromAddr, body) => ({
@@ -100,31 +102,25 @@ describe("ImapFetcher component", () => {
       body,
     });
 
-    assert.ok(component.isSystemMessage(makeEmail("no.reply.inreach@garmin.com", "PING")));
+    // ImapFetcher now emits ALL messages on the 'out' port
+    // Router filters them by intent (BLOG, GRIB, SAILDOCS, etc.)
     assert.ok(
-      component.isSystemMessage(makeEmail("call@winlink.org", "---BEGIN RETICULUM METADATA---")),
-    );
-    assert.ok(component.isSystemMessage(makeEmail("query@saildocs.com", "GRIB data")));
-  });
-
-  it("skips unrelated messages (leaves them unread)", () => {
-    const component = ImapFetcherModule.getComponent();
-
-    const makeEmail = (fromAddr, body) => ({
-      imapUid: 999,
-      from: { address: fromAddr, name: "" },
-      to: { address: "boat@example.com", name: "" },
-      subject: "test",
-      body,
-    });
-
-    assert.ok(
-      !component.isSystemMessage(makeEmail("friend@gmail.com", "Hey, how's it going?")),
-      "personal email should be skipped",
+      component.isSystemMessage(
+        makeEmail("no.reply.inreach@garmin.com", "PING"),
+      ),
     );
     assert.ok(
-      !component.isSystemMessage(makeEmail("newsletter@medium.com", "Check out these articles")),
-      "newsletter should be skipped",
+      component.isSystemMessage(
+        makeEmail("call@winlink.org", "---BEGIN RETICULUM METADATA---"),
+      ),
+    );
+    assert.ok(
+      component.isSystemMessage(makeEmail("query@saildocs.com", "GRIB data")),
+    );
+    assert.ok(
+      component.isSystemMessage(
+        makeEmail("query-reply@saildocs.com", "GRIB data"),
+      ),
     );
   });
 });
