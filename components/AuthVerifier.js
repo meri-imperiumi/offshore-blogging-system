@@ -86,6 +86,13 @@ class AuthVerifier extends Component {
       const replyUrl = this.extractInReachReplyUrl(email);
       if (replyUrl) {
         msg.replyTo = replyUrl;
+        console.log(
+          `[AuthVerifier] InReach verified, confidence=${msg.confidence}, replyTo=${replyUrl}`,
+        );
+      } else {
+        console.log(
+          `[AuthVerifier] InReach verified but no reply URL found`,
+        );
       }
 
       if (msg.confidence === "none") {

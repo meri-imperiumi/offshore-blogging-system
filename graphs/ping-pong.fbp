@@ -7,7 +7,7 @@
 '{{ USERNAME }}' -> USERNAME Listener
 '{{ PASSWORD }}' -> PASSWORD Listener
 'INBOX' -> MAILBOX Listener
-'' -> START Listener
+'15' -> INTERVAL Listener
 
 # 2. Authentication
 Listener OUT -> IN Verifier(AuthVerifier)

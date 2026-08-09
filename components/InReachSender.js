@@ -181,6 +181,9 @@ class InReachSender extends Component {
       }
     } catch (err) {
       const code = err.code || "API_FAILURE";
+      console.error(
+        `[InReachSender] Send failed at chunk ${sent + 1}/${chunks.length}: ${code} - ${err.message}`,
+      );
       const wrapped = new InReachClient.InReachError(
         `InReach transmission failed at chunk ${sent + 1}/${chunks.length}: ${err.message}`,
         code,
@@ -195,6 +198,9 @@ class InReachSender extends Component {
     confirm.intent = "NOTIFY";
     confirm.payload = `Sent ${chunks.length} message(s) via InReach`;
     confirm.notifyText = `InReach: ${chunks.length} messages sent`;
+    console.log(
+      `[InReachSender] Successfully sent ${chunks.length} message(s)`,
+    );
     return output.sendDone(confirm);
   }
 

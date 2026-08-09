@@ -99,9 +99,10 @@ class ImapListener extends Component {
           control: true,
           required: false,
         },
-        start: {
-          datatype: "bang",
-          description: "Start the IMAP listener (activates the generator)",
+        interval: {
+          datatype: "number",
+          description:
+            "Start the IMAP listener with the given polling interval in seconds (activates the generator)",
           required: true,
         },
       },
@@ -122,15 +123,23 @@ class ImapListener extends Component {
     // The activated generator context — kept alive until tearDown
     this.generatorContext = null;
     this.generatorOutput = null;
+    // Polling state
+    this.polling = false;
+    this.pollInterval = null;
+    this.pollIntervalMs = 15000; // 15s poll cycle for InReach traffic
   }
 
   handle(input, output, context) {
-    // The `start` bang activates the generator. Control ports are read
-    // from their buffered values (control ports are non-triggering).
-    if (!input.hasData("start")) {
+    // The `interval` port (polling interval in seconds) activates the
+    // generator. Control ports are read from their buffered values
+    // (control ports are non-triggering).
+    if (!input.hasData("interval")) {
       return;
     }
-    input.getData("start");
+    const pollSeconds = input.getData("interval");
+    if (typeof pollSeconds === "number" && pollSeconds > 0) {
+      this.pollIntervalMs = pollSeconds * 1000;
+    }
 
     // Read config from control ports (buffered from IIPs)
     if (input.hasData("host")) {
@@ -196,16 +205,29 @@ class ImapListener extends Component {
 
       // Process any unread messages already in the mailbox at startup
       // (e.g. PINGs that arrived while we were offline)
-      await this.fetchNewMessages(0);
+      await this.fetchNewMessages();
 
-      // Listen for new messages via IDLE
-      client.on("exists", async (data) => {
-        console.log(`[ImapListener] New message(s) detected: ${data.count}`);
-        await this.fetchNewMessages(data.count);
-      });
-
-      // Keep IDLE alive
-      await client.idle();
+      // Polling loop: check for new unseen messages every N seconds.
+      // We use polling instead of IDLE because ImapFlow's manual idle()
+      // blocks and conflicts with the search/fetch/store commands the
+      // exists handler runs (IDLE must stop to run them, stalling the
+      // pending idle() promise). Polling is simpler and more robust for
+      // our low-frequency InReach traffic (minutes between messages).
+      this.polling = true;
+      this.pollInterval = setInterval(
+        () => {
+          this.fetchNewMessages().catch((err) => {
+            console.error(
+              "[ImapListener] Error during poll:",
+              err.message,
+            );
+          });
+        },
+        this.pollIntervalMs,
+      );
+      console.log(
+        `[ImapListener] Polling every ${this.pollIntervalMs / 1000}s`,
+      );
     } catch (err) {
       console.error("[ImapListener] Connection failed:", err.message);
       this.client = null;
@@ -215,13 +237,15 @@ class ImapListener extends Component {
     }
   }
 
-  async fetchNewMessages(count) {
+  async fetchNewMessages() {
     if (!this.client) {
       return;
     }
 
     try {
-      const searchResult = await this.client.search({ seen: false });
+      const searchResult = await this.client.search({ seen: false }, {
+        uid: true,
+      });
 
       if (searchResult.length === 0) {
         return;
@@ -243,7 +267,9 @@ class ImapListener extends Component {
         );
         await this.processMessage(message);
       }
-      console.log(`[ImapListener] Fetch complete, processed ${fetched} messages`);
+      console.log(
+        `[ImapListener] Fetch complete, processed ${fetched} messages`,
+      );
     } catch (err) {
       console.error("[ImapListener] Fetch failed:", err.message);
     }
@@ -316,6 +342,7 @@ class ImapListener extends Component {
       await this.client.messageFlagsSet(message.uid, ["\\Seen"], {
         uid: true,
       });
+      console.log(`[ImapListener] Marked as seen: uid=${message.uid}`);
     } catch (err) {
       console.warn("[ImapListener] Failed to mark as seen:", err.message);
     }
@@ -323,6 +350,11 @@ class ImapListener extends Component {
 
   // Called at network shutdown — clean up IMAP connection and deactivate
   tearDown(callback) {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
+    this.polling = false;
     if (this.client) {
       console.log("[ImapListener] Shutting down IMAP connection");
       this.client.close();

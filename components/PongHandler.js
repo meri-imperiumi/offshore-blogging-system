@@ -50,6 +50,7 @@ class PongHandler extends Component {
     const message = (msg.payload || "").trim().split(/\r?\n/)[0].trim();
 
     if (message === "PING") {
+      console.log("[PongHandler] PING received, sending PONG");
       // Generate PONG response
       msg.payload = "PONG";
       msg.intent = "NOTIFY";

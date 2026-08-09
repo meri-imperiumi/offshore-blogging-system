@@ -93,7 +93,7 @@ graph.addInitial(parseInt(process.env.IMAP_PORT) || 993, "Listener", "port");
 graph.addInitial(process.env.IMAP_USERNAME, "Listener", "username");
 graph.addInitial(process.env.IMAP_PASSWORD, "Listener", "password");
 graph.addInitial(process.env.IMAP_MAILBOX || "INBOX", "Listener", "mailbox");
-graph.addInitial(true, "Listener", "start");
+graph.addInitial(15, "Listener", "interval");
 graph.addInitial(process.env.INREACH_REPLY_ADDRESS, "Sender", "replyaddress");
 graph.addInitial(5000, "Sender", "delayms");
 

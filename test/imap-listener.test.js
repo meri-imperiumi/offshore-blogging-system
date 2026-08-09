@@ -17,7 +17,7 @@ describe("ImapListener component", () => {
     assert.strictEqual(typeof component.handle, "function");
   });
 
-  it("has the expected inports (config + start bang)", () => {
+  it("has the expected inports (config + interval)", () => {
     const component = ImapListenerModule.getComponent();
     const portNames = Object.keys(component.inPorts.ports);
     assert.ok(portNames.includes("host"), "should have host inport");
@@ -25,17 +25,17 @@ describe("ImapListener component", () => {
     assert.ok(portNames.includes("username"), "should have username inport");
     assert.ok(portNames.includes("password"), "should have password inport");
     assert.ok(portNames.includes("mailbox"), "should have mailbox inport");
-    assert.ok(portNames.includes("start"), "should have start inport");
-    // Config ports are control (non-triggering); start bang triggers
+    assert.ok(portNames.includes("interval"), "should have interval inport");
+    // Config ports are control (non-triggering); interval triggers
     assert.strictEqual(
       component.inPorts.ports.host.options.control,
       true,
       "host should be control (non-triggering)",
     );
     assert.strictEqual(
-      component.inPorts.ports.start.options.control,
+      component.inPorts.ports.interval.options.control,
       false,
-      "start should be non-control (triggering)",
+      "interval should be non-control (triggering)",
     );
   });
 
