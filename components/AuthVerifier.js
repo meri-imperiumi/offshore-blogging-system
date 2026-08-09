@@ -45,7 +45,7 @@ class AuthVerifier extends Component {
       replyTo: null,
       channel: null,
       intent: null,
-      payload: email.raw || email.body || "",
+      payload: email.body || "",
       confidence: "none",
     };
 
@@ -81,6 +81,13 @@ class AuthVerifier extends Component {
       msg.identityHash = verification.identityHash;
       msg.confidence = verification.confidence;
 
+      // Extract the Garmin reply URL from the email body so InReachSender
+      // knows where to POST the response.
+      const replyUrl = this.extractInReachReplyUrl(email);
+      if (replyUrl) {
+        msg.replyTo = replyUrl;
+      }
+
       if (msg.confidence === "none") {
         return output.sendDone(
           fail(msg, new Error("Unauthorized: Invalid InReach sender")),
@@ -114,11 +121,7 @@ class AuthVerifier extends Component {
    */
   isInReach(email) {
     const sender = email.from?.address || "";
-    return (
-      sender.endsWith("@inreach.garmin.com") ||
-      sender.endsWith("@garmin.com") ||
-      email.from?.name?.toLowerCase().includes("inreach")
-    );
+    return sender === "no.reply.inreach@garmin.com";
   }
 
   /**
@@ -140,23 +143,114 @@ class AuthVerifier extends Component {
   }
 
   /**
-   * Verify InReach sender via phone number/domain
+   * Verify InReach sender via device ID from bounce token
    */
   verifyInReachSender(email) {
-    const sender = email.from?.address || "";
+    // Extract device ID from bounce token (cryptographically signed by Garmin)
+    // Format: bounces+{{ device_id }}-{{ recipient }}@inreacheml.garmin.com
+    const deviceId = this.extractInReachDeviceId(email);
 
-    // Extract phone number from sender address (e.g., +1234567890@inreach.garmin.com)
-    const match = sender.match(/^\+?(\d+)@inreach\.garmin\.com$/);
-    if (match) {
-      // TODO: Map phone number to identity hash via configured mapping
-      // For now, use phone number as a placeholder
-      return {
-        identityHash: `PHONE_${match[1]}`,
-        confidence: "medium",
-      };
+    if (!deviceId) {
+      return { identityHash: null, confidence: "none" };
     }
 
-    return { identityHash: null, confidence: "none" };
+    // Lookup device mapping
+    const device = this.lookupInReachDevice(deviceId);
+
+    if (!device) {
+      console.log(
+        `[AuthVerifier] Unknown InReach device: ${deviceId}. Please register it.`,
+      );
+      return { identityHash: null, confidence: "none" };
+    }
+
+    return {
+      identityHash: device.identity_hash,
+      confidence: "high",
+    };
+  }
+
+  /**
+   * Extract InReach device ID from bounce token
+   */
+  extractInReachDeviceId(email) {
+    const returnPath =
+      email.returnPath ||
+      email.headers?.returnPath ||
+      email.headers?.["return-path"] ||
+      "";
+    // Format: bounces+<deviceId>-<recipient>@inreacheml.garmin.com
+    // deviceId is numeric; recipient may contain dashes (e.g. boat=lille-oe.de)
+    const match = returnPath.match(/bounces\+(\d+)-/);
+    return match ? match[1] : null;
+  }
+
+  lookupInReachDevice(deviceId) {
+    // For testing, check environment variable first
+    if (process.env.TEST_DEVICE_ID && process.env.TEST_IDENTITY_HASH) {
+      if (deviceId === process.env.TEST_DEVICE_ID) {
+        return {
+          bounce_token: deviceId,
+          imei: process.env.TEST_IMEI || "test",
+          identity_hash: process.env.TEST_IDENTITY_HASH,
+          owner_name: "Test User",
+        };
+      }
+    }
+
+    // Check Dacar tuples (future)
+    // TODO: Implement Dacar lookup
+
+    // Check SQLite database
+    if (this.db) {
+      return this.db.getInReachDevice(deviceId);
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract the Garmin InReach reply URL from the email.
+   *
+   * InReach emails contain a reply link. Historically this was the direct
+   * reply endpoint:
+   *   https://explore.garmin.com/TextMessage/TxtMsg?extId=<GUID>&adr=...
+   * Newer emails use a share link that redirects to it:
+   *   https://inreachlink.com/<CODE>
+   *     -> https://eur.explore.garmin.com/textmessage/txtmsg?extId=<GUID>
+   *
+   * The share code uses base64url characters (A-Za-z0-9_-), so the regex
+   * must include `_` and `-` or the URL is silently truncated at the first
+   * such character (a real bug that produced a short, unusable URL).
+   *
+   * The raw MIME body is quoted-printable encoded: long lines are soft-broken
+   * with a trailing `=` + CRLF. We strip those soft breaks first so a URL
+   * split across lines is rejoined before matching.
+   */
+  extractInReachReplyUrl(email) {
+    const sources = [email.raw, email.body].filter(Boolean);
+    for (const src of sources) {
+      const raw = Buffer.isBuffer(src) ? src.toString("utf-8") : String(src);
+      // Remove quoted-printable soft line breaks (trailing '=' + CRLF) so a
+      // URL split across wrapped lines is rejoined.
+      const text = raw.replace(/=\r?\n/g, "");
+      // Prefer a direct reply endpoint (any region subdomain, either case).
+      const exploreMatch = text.match(
+        /https:\/\/(?:[a-z]+\.)?explore\.garmin\.com\/[Tt]ext[Mm]essage\/[Tt]xt[Mm]sg\?[^\s"<>]+/,
+      );
+      if (exploreMatch) {
+        return exploreMatch[0];
+      }
+      // Fall back to the inreachlink.com share URL; InReachClient follows
+      // its redirect to resolve the reply endpoint.
+      const linkMatch = text.match(
+        /https:\/\/inreachlink\.com\/[A-Za-z0-9_-]+/,
+      );
+      if (linkMatch) {
+        return linkMatch[0];
+      }
+    }
+    return null;
   }
 
   /**

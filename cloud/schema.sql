@@ -74,6 +74,16 @@ CREATE TABLE IF NOT EXISTS dacar_tombstones (
   PRIMARY KEY (issuer, subject, object, relation)
 );
 
+-- InReach device mapping for authorization
+CREATE TABLE IF NOT EXISTS inreach_devices (
+  bounce_token TEXT PRIMARY KEY,
+  imei TEXT NOT NULL UNIQUE,
+  identity_hash TEXT NOT NULL,
+  owner_name TEXT,
+  registered_at INTEGER NOT NULL,
+  last_seen INTEGER
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_buffer_chunks_created ON buffer_chunks(created_at);
 CREATE INDEX IF NOT EXISTS idx_buffer_chunks_transmission ON buffer_chunks(identity_hash, transmission_id);
@@ -81,3 +91,4 @@ CREATE INDEX IF NOT EXISTS idx_grib_gates_created ON grib_gates(created_at);
 CREATE INDEX IF NOT EXISTS idx_pending_saildocs_created ON pending_saildocs(created_at);
 CREATE INDEX IF NOT EXISTS idx_dacar_tuples_expiry ON dacar_tuples(expiry);
 CREATE INDEX IF NOT EXISTS idx_dacar_tombstones_expiry ON dacar_tombstones(expires_at);
+CREATE INDEX IF NOT EXISTS idx_inreach_devices_identity ON inreach_devices(identity_hash);

@@ -6,6 +6,8 @@ Technical work is planned with work documents (in Markdown) that are managed usi
 
 When planning new work, there should always be a corresponding work document created explaining the idea. When implementing, the appropriate work document should be kept up-to-date by posting updates to it. Agent may _propose_ work documents, not _create_ them.
 
+Work documents are public. Do not place any secrets or tokens or personally identifying information into them. Instead document how you get those things (for example when parsing an email).
+
 ## Boundaries
 
 - ✅ **Always**: write at least smoketests for any new functionality

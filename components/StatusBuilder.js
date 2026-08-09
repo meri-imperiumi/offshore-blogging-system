@@ -80,23 +80,9 @@ class StatusBuilder extends Component {
       const msgOut = metrics?.msg_out || 0;
 
       // Count pending buffer chunks
-      const staleChunks = this.db.getStaleBufferChunks(999999); // Get all chunks
-      const pendingChunks = staleChunks.reduce((acc, chunk) => {
-        const key = `${chunk.identity_hash}:${chunk.transmission_id}`;
-        acc[key] = Math.max(acc[key] || 0, chunk.received);
-        return acc;
-      }, {});
-      const pendingSequences = Object.keys(pendingChunks).length;
+      const pendingSequences = this.db.countPendingSequences().n || 0;
 
       // Count pending GRIB gates (unanswered consent prompts)
-      const pendingGates = this.db.countGribGates();
-
-      // Count pending Saildocs (outbound queries awaiting a reply)
-      const pendingSaildocs = this.db.countPendingSaildocs();
-
-      // Format status string
-
-      // Count GRIB gates (unanswered consent prompts held in quarantine)
       const pendingGates = this.db.countGribGates();
 
       // Count pending Saildocs (outbound queries awaiting a reply)
@@ -110,7 +96,6 @@ class StatusBuilder extends Component {
         `  Msg Out: ${msgOut}`,
         `  Pending seqs: ${pendingSequences}`,
         `  Pending gates: ${pendingGates}`,
-        `  Pending Saildocs: ${pendingSaildocs}`,
         `  Pending Saildocs: ${pendingSaildocs}`,
       ];
 

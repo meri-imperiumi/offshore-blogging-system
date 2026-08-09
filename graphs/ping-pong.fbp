@@ -1,0 +1,23 @@
+# Ping-Pong Test Graph
+# Minimal graph for testing InReach message flow
+
+# 1. IMAP Ingestion
+'imap.mailbox.org' -> HOST Listener(ImapListener)
+'993' -> PORT Listener
+'{{ USERNAME }}' -> USERNAME Listener
+'{{ PASSWORD }}' -> PASSWORD Listener
+'INBOX' -> MAILBOX Listener
+'' -> START Listener
+
+# 2. Authentication
+Listener OUT -> IN Verifier(AuthVerifier)
+
+# 3. PING/PONG Handler
+Verifier OUT -> IN PongHandler(PongHandler)
+
+# 4. Send Reply Back
+PongHandler OUT -> IN InReachSender(InReachSender)
+
+# 5. InReach Sender Configuration
+'cloud@boat.example.com' -> REPLY_ADDRESS InReachSender
+'5000' -> DELAY_MS InReachSender

@@ -108,10 +108,7 @@ describe("StatusBuilder component", () => {
   it("bypasses failed messages unchanged", async () => {
     const t = new Wrapper("signalk-offshore-blogging/StatusBuilder");
     let received = null;
-    const timer = setTimeout(
-      () => reject(new Error("timed out")),
-      3000,
-    );
+    const timer = setTimeout(() => reject(new Error("timed out")), 3000);
     await new Promise((resolve, reject) => {
       t.start()
         .then(() => {

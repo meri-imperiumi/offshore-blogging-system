@@ -2,3 +2,5 @@ references/
 node_modules/
 flowhub.json
 fbp.json
+.env
+config/devices.json
