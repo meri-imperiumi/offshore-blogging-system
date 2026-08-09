@@ -4,8 +4,8 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert");
-const path = require("path");
-const fs = require("fs").promises;
+const path = require("node:path");
+const fs = require("node:fs").promises;
 
 test("should load identity from signalk-reticulum config file (environment-specific)", async (t) => {
   const { Identity, fromHex } = require("@reticulum/core");
@@ -27,13 +27,13 @@ test("should load identity from signalk-reticulum config file (environment-speci
   ];
 
   let configData = null;
-  let foundPath = null;
+  let _foundPath = null;
 
   for (const configPath of configPaths) {
     try {
       await fs.access(configPath, fs.constants.R_OK);
       configData = await fs.readFile(configPath, "utf-8");
-      foundPath = configPath;
+      _foundPath = configPath;
       break;
     } catch {
       // Try next path

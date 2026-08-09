@@ -7,8 +7,8 @@
 
 const zlib = require("node:zlib");
 const sharp = require("sharp");
-const fs = require("fs").promises;
-const path = require("path");
+const fs = require("node:fs").promises;
+const path = require("node:path");
 const { Identity, toHex, fromHex } = require("@reticulum/core");
 
 // Garmin's confirmed 1-char-safe set (support.garmin.com character-count
@@ -69,7 +69,7 @@ function calculateCRC16(buffer) {
 }
 
 // Find images referenced in markdown content
-function findImagesFromMarkdown(body, postDate, blogPath) {
+function findImagesFromMarkdown(body, _postDate, blogPath) {
   const images = [];
 
   // Split the body and find image markers
@@ -127,6 +127,19 @@ function findImagesFromMarkdown(body, postDate, blogPath) {
     }
   }
   return images;
+}
+
+// Remove markdown image tags from body text.
+// Used for the text-only InReach variant, where no images are transmitted
+// and the image references would only waste precious message budget.
+// Handles image paths that themselves contain parentheses (e.g. foo(0).jpg)
+// by matching one level of balanced nested parentheses inside the URL.
+function stripImageMarkdown(body) {
+  return body
+    .replace(/!\[([^\]]*)\]\((?:[^()]|\([^)]*\))*\)/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // Get today's date in MMDD format
@@ -386,16 +399,25 @@ async function encodeBlogPost(
   // Find images in markdown content
   const images = findImagesFromMarkdown(body, postDate, blogPath);
 
-  // Compress and chunk text
-  const textBlob = compressText(title, postDate, body, dictionary);
+  // Compress and chunk the text-only variant. The text-only InReach variant
+  // carries no images, so the markdown image tags are stripped from the body
+  // to save message budget.
+  const textOnlyBody = stripImageMarkdown(body);
+  const textBlob = compressText(title, postDate, textOnlyBody, dictionary);
   const textMessages = chunkData(textBlob, postIdToUse, "T");
+
+  // Compress and chunk the full body (with image markdown retained). The
+  // image variant uses these so the receiving server knows where to place the
+  // separately-transmitted image chunks.
+  const fullTextBlob = compressText(title, postDate, body, dictionary);
+  const fullTextMessages = chunkData(fullTextBlob, postIdToUse, "T");
 
   // Compress and chunk images (filter by includeImages if provided)
   const imageMessages = [];
   const imageInfos = [];
   const imagesToEncode =
-    includeImages !== null
-      ? images.filter((img, idx) => includeImages.includes(idx))
+    includeImages != null
+      ? images.filter((_img, idx) => includeImages.includes(idx))
       : images;
 
   if (imagesToEncode.length > 0) {
@@ -412,7 +434,7 @@ async function encodeBlogPost(
         // Use different type suffix for multiple images (I, J, K...)
         const typeSuffix = String.fromCharCode(73 + imageMessages.length); // I=73, J=74, etc.
         imageMessages.push(...chunkData(imgBlob, postIdToUse, typeSuffix));
-      } catch (error) {
+      } catch (_error) {
         // Image access error - skip silently, will be reported in preview
       }
     }
@@ -423,9 +445,10 @@ async function encodeBlogPost(
     title,
     date: postDate,
     textMessages,
+    fullTextMessages,
     imageMessages,
     imageInfos,
-    totalMessages: textMessages.length + imageMessages.length,
+    totalMessages: fullTextMessages.length + imageMessages.length,
     foundImages: images.length,
     selectedImages: imagesToEncode.length,
   };
@@ -510,7 +533,7 @@ async function loadReticulumIdentity(app, identityPath) {
   // Try to get from signalk-reticulum plugin instance
   // Signal K stores loaded plugins in different ways depending on version
   try {
-    if (app.plugins && app.plugins["signalk-reticulum"]) {
+    if (app.plugins?.["signalk-reticulum"]) {
       const reticulumPlugin = app.plugins["signalk-reticulum"];
       if (reticulumPlugin.identity) {
         app.debug("Using identity from signalk-reticulum plugin (app.plugins)");
@@ -524,10 +547,10 @@ async function loadReticulumIdentity(app, identityPath) {
   }
 
   try {
-    if (app.pluginManager && app.pluginManager.plugins) {
+    if (app.pluginManager?.plugins) {
       const reticulumPlugin =
         app.pluginManager.plugins.get("signalk-reticulum");
-      if (reticulumPlugin && reticulumPlugin.identity) {
+      if (reticulumPlugin?.identity) {
         app.debug(
           "Using identity from signalk-reticulum plugin (app.pluginManager)",
         );
@@ -560,7 +583,7 @@ async function loadReticulumIdentity(app, identityPath) {
       const identity = await Identity.fromBytes(privateKey);
       app.debug(`Loaded identity from common location: ${testPath}`);
       return identity;
-    } catch (error) {
+    } catch (_error) {
       // Continue to next path
     }
   }
@@ -622,12 +645,26 @@ module.exports = (app) => {
 
   plugin.registerWithRouter = (router) => {
     // Serve static files
-    router.get("/", (req, res) => {
+    router.get("/", (_req, res) => {
       res.sendFile(path.join(__dirname, "..", "public", "index.html"));
+    });
+
+    // API: Feature status (so the UI can show/hide opt-in features)
+    router.get("/api/status", (_req, res) => {
+      res.json({
+        blogEnabled: !!plugin.config?.enableBlogEncoding,
+        defaultImageBudget: plugin.config?.defaultImageBudget || 5,
+      });
     });
 
     // API: Preview compressed images (without chunking)
     router.post("/api/preview-images", async (req, res) => {
+      if (!plugin.config?.enableBlogEncoding) {
+        return res.status(403).json({
+          error:
+            "Blog encoding is not enabled. Enable it in the plugin configuration.",
+        });
+      }
       try {
         const { filename, imageBudget } = req.body;
 
@@ -695,6 +732,12 @@ module.exports = (app) => {
 
     // API: Encode a blog post for InReach
     router.post("/api/encode", async (req, res) => {
+      if (!plugin.config?.enableBlogEncoding) {
+        return res.status(403).json({
+          error:
+            "Blog encoding is not enabled. Enable it in the plugin configuration.",
+        });
+      }
       try {
         const { filename, postid, imageBudget, includeImages } = req.body;
 
@@ -785,6 +828,12 @@ module.exports = (app) => {
 
     // API: Sign for Winlink
     router.post("/api/sign", async (req, res) => {
+      if (!plugin.config?.enableBlogEncoding) {
+        return res.status(403).json({
+          error:
+            "Blog encoding is not enabled. Enable it in the plugin configuration.",
+        });
+      }
       try {
         const { filename } = req.body;
 
@@ -801,7 +850,7 @@ module.exports = (app) => {
 
         // Get blog path and read the post
         const blogPath = plugin.config?.blogSyncPath || "/home/pi/log";
-        const dictPath = plugin.config?.dictionaryPath || null;
+        const _dictPath = plugin.config?.dictionaryPath || null;
         const markdownPath = filename.endsWith(".md")
           ? path.join(blogPath, "_logs", filename)
           : path.join(blogPath, "_logs", `${filename}.md`);
@@ -833,6 +882,13 @@ module.exports = (app) => {
   plugin.schema = {
     type: "object",
     properties: {
+      enableBlogEncoding: {
+        type: "boolean",
+        title: "Enable blog post encoding",
+        description:
+          "Enable the blog post encoding feature. Off by default since it requires a blog directory to be configured via 'Blog sync path' and most users only need the weather/decode tools.",
+        default: false,
+      },
       blogSyncPath: {
         type: "string",
         title: "Blog sync path",
@@ -874,6 +930,8 @@ module.exports.decompressText = decompressText;
 module.exports.chunkData = chunkData;
 module.exports.reassembleChunks = reassembleChunks;
 module.exports.findImagesFromMarkdown = findImagesFromMarkdown;
+module.exports.stripImageMarkdown = stripImageMarkdown;
+module.exports.encodeBlogPost = encodeBlogPost;
 module.exports.getTodayPostid = getTodayPostid;
 module.exports.extractPostidFromFilename = extractPostidFromFilename;
 module.exports.SAIL_DICT = SAIL_DICT;

@@ -3,11 +3,43 @@
 class OffshoreBloggingUI {
   constructor() {
     this.currentEncodeResult = null;
+    this.currentPreviews = null;
     this.chunks = [];
+    // Messages the user has already copied, so we can mark them and make it
+    // easier to keep track of what has been sent. Persisted in localStorage so
+    // the markers survive page reloads (e.g. if the server requests a chunk
+    // again later). Keyed by the exact message string.
+    this.copiedMessages = this.loadCopiedMessages();
     this.initTabs();
     this.initBlogTab();
     this.initWeatherTab();
     this.initDecodeTab();
+    this.checkStatus();
+  }
+
+  loadCopiedMessages() {
+    try {
+      const stored = localStorage.getItem("offshore-blogging:copied");
+      return new Set(stored ? JSON.parse(stored) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  saveCopiedMessages() {
+    try {
+      localStorage.setItem(
+        "offshore-blogging:copied",
+        JSON.stringify([...this.copiedMessages]),
+      );
+    } catch {
+      // localStorage may be unavailable (private mode, etc.) - keep in-memory
+    }
+  }
+
+  markCopied(text) {
+    this.copiedMessages.add(text);
+    this.saveCopiedMessages();
   }
 
   initTabs() {
@@ -37,12 +69,17 @@ class OffshoreBloggingUI {
 
     const filenameInput = document.getElementById("filename");
     const postidInput = document.getElementById("postid");
+    const imageBudgetInput = document.getElementById("imageBudget");
 
     if (filenameInput) {
       filenameInput.value = todayStr;
     }
     if (postidInput) {
       postidInput.value = todayPostid;
+    }
+    // Apply default image budget from plugin config (fetched via /api/status)
+    if (imageBudgetInput && this.status?.defaultImageBudget) {
+      imageBudgetInput.value = this.status.defaultImageBudget;
     }
 
     // Update postid when filename changes
@@ -91,6 +128,49 @@ class OffshoreBloggingUI {
     document
       .getElementById("clearChunksBtn")
       .addEventListener("click", () => this.clearChunks());
+  }
+
+  // Fetch feature flags from the plugin so opt-in features (like blog
+  // encoding) can be hidden when not enabled.
+  async checkStatus() {
+    try {
+      const response = await fetch(
+        "/plugins/signalk-offshore-blogging/api/status",
+      );
+      this.status = await response.json();
+    } catch {
+      this.status = {};
+    }
+
+    // Apply default image budget if the blog tab is present
+    const imageBudgetInput = document.getElementById("imageBudget");
+    if (imageBudgetInput && this.status.defaultImageBudget) {
+      imageBudgetInput.value = this.status.defaultImageBudget;
+    }
+
+    if (!this.status.blogEnabled) {
+      this.disableBlogTab();
+    }
+  }
+
+  disableBlogTab() {
+    const blogTab = document.querySelector('.tab[data-tab="blog"]');
+    const blogContent = document.getElementById("blog");
+    if (blogTab) {
+      blogTab.style.display = "none";
+    }
+    if (blogContent) {
+      blogContent.classList.remove("active");
+    }
+    // Blog is the default active tab - switch to weather so the user isn't
+    // left looking at an empty page.
+    if (blogTab?.classList.contains("active")) {
+      blogTab.classList.remove("active");
+      const weatherTab = document.querySelector('.tab[data-tab="weather"]');
+      const weatherContent = document.getElementById("weather");
+      weatherTab?.classList.add("active");
+      weatherContent?.classList.add("active");
+    }
   }
 
   showError(message) {
@@ -211,11 +291,7 @@ class OffshoreBloggingUI {
       .forEach((el) => el.remove());
 
     // Show image previews if available
-    if (
-      previewData &&
-      previewData.previews &&
-      previewData.previews.length > 0
-    ) {
+    if (previewData?.previews && previewData.previews.length > 0) {
       const section = document.createElement("div");
       section.className = "card image-preview-section";
       section.innerHTML = "<h3>Compressed Image Previews</h3>";
@@ -233,7 +309,7 @@ class OffshoreBloggingUI {
         wrapper.innerHTML = `
           <p style="margin-bottom: 10px; color: var(--highlight-color);">
             <strong>Image ${idx + 1}: ${preview.alt || "(no alt text)"}</strong>
-            ${isError ? ' <span style="color: #ff6b6b;">(Error: ' + preview.error + ")</span>" : ""}
+            ${isError ? ` <span style="color: #ff6b6b;">(Error: ${preview.error})</span>` : ""}
           </p>
           ${
             !isError
@@ -314,18 +390,20 @@ class OffshoreBloggingUI {
         return;
       }
       const winlinkData = this.currentEncodeResult.winlink;
+      const metaCopied = this.copiedMessages.has(winlinkData.metadata);
+      const contentCopied = this.copiedMessages.has(winlinkData.content);
       list.innerHTML = `
         <p style="margin-bottom: 10px; color: var(--highlight-color);">
           <strong>Subject:</strong> Blog Post via Vara HF
         </p>
         <p style="margin-bottom: 10px;">Copy the following and paste into a new Winlink email:</p>
-        <div class="message-item">
+        <div class="message-item${metaCopied ? " message-copied" : ""}">
           <div class="message-content" style="white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(winlinkData.metadata)}</div>
-          <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(winlinkData.metadata)}', this)">Copy Metadata</button>
+          <button class="copy-btn${metaCopied ? " copied" : ""}" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(winlinkData.metadata)}', this)">${metaCopied ? "Copied ✓" : "Copy Metadata"}</button>
         </div>
-        <div class="message-item">
+        <div class="message-item${contentCopied ? " message-copied" : ""}">
           <div class="message-content" style="white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(winlinkData.content)}</div>
-          <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(winlinkData.content)}', this)">Copy Content</button>
+          <button class="copy-btn${contentCopied ? " copied" : ""}" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(winlinkData.content)}', this)">${contentCopied ? "Copied ✓" : "Copy Content"}</button>
         </div>
         <p style="color: #888; font-size: 0.85rem; margin-top: 10px;">
           <strong>Identity Hash:</strong> ${winlinkData.identityHash}
@@ -341,8 +419,11 @@ class OffshoreBloggingUI {
       messages = this.currentEncodeResult.textMessages;
       messageText = `${this.currentEncodeResult.textMessages.length} message(s) - copy each to Garmin Messenger`;
     } else if (version === "image") {
+      // The image variant sends the full body (with image markdown retained
+      // so the server knows where to place images) plus the image chunks.
       messages = [
-        ...this.currentEncodeResult.textMessages,
+        ...(this.currentEncodeResult.fullTextMessages ||
+          this.currentEncodeResult.textMessages),
         ...this.currentEncodeResult.imageMessages,
       ];
       messageText = `${this.currentEncodeResult.totalMessages} message(s) - copy each to Garmin Messenger`;
@@ -353,13 +434,32 @@ class OffshoreBloggingUI {
     info.textContent = messageText;
     list.appendChild(info);
 
+    // If any of the currently-visible chunks have been copied, offer a way to
+    // reset the markers (e.g. if the server asks for a chunk again and the
+    // user wants a clean slate).
+    if (messages.some((m) => this.copiedMessages.has(m))) {
+      const resetBtn = document.createElement("button");
+      resetBtn.className = "copy-btn";
+      resetBtn.style.marginBottom = "10px";
+      resetBtn.textContent = "Reset copied markers";
+      resetBtn.addEventListener("click", () => {
+        for (const m of messages) {
+          this.copiedMessages.delete(m);
+        }
+        this.saveCopiedMessages();
+        this.renderMessages(version);
+      });
+      list.appendChild(resetBtn);
+    }
+
     messages.forEach((msg, i) => {
+      const isCopied = this.copiedMessages.has(msg);
       const item = document.createElement("div");
-      item.className = "message-item";
+      item.className = `message-item${isCopied ? " message-copied" : ""}`;
       item.innerHTML = `
         <div class="message-number">${i + 1}/${messages.length}</div>
         <div class="message-content">${this.escapeHtml(msg)}</div>
-        <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(msg)}', this)">Copy</button>
+        <button class="copy-btn${isCopied ? " copied" : ""}" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(msg)}', this)">${isCopied ? "Copied ✓" : "Copy"}</button>
       `;
       list.appendChild(item);
     });
@@ -367,12 +467,17 @@ class OffshoreBloggingUI {
 
   static copyToClipboard(text, btn) {
     navigator.clipboard.writeText(text).then(() => {
-      btn.textContent = "Copied!";
+      const instance = window.OffshoreBloggingUI;
+      instance.markCopied(text);
+      // Mark this chunk as copied persistently (don't auto-revert). The
+      // user can still click Copy again to re-copy in case a chunk got
+      // missed and the server requests it.
+      btn.textContent = "Copied ✓";
       btn.classList.add("copied");
-      setTimeout(() => {
-        btn.textContent = "Copy";
-        btn.classList.remove("copied");
-      }, 2000);
+      const item = btn.closest(".message-item");
+      if (item) {
+        item.classList.add("message-copied");
+      }
     });
   }
 
@@ -387,7 +492,7 @@ class OffshoreBloggingUI {
     // Parse the request to estimate message count
     const parts = request.split("|");
     const model = parts[0].split(":")[0];
-    const timepoints = parts[2] ? parts[2].split(",").length : 1;
+    const _timepoints = parts[2] ? parts[2].split(",").length : 1;
 
     // Simple estimation: each message ~120 chars, weather requests vary
     const estimatedMsgs = Math.ceil(request.length / 120);
@@ -473,7 +578,7 @@ class OffshoreBloggingUI {
     });
 
     let html = "";
-    for (const [key, group] of Object.entries(groups)) {
+    for (const [_key, group] of Object.entries(groups)) {
       const chunkIds = Object.keys(group.chunks)
         .map(Number)
         .sort((a, b) => a - b);
@@ -524,7 +629,7 @@ class OffshoreBloggingUI {
 
     let html = "";
 
-    for (const [key, group] of Object.entries(groups)) {
+    for (const [_key, group] of Object.entries(groups)) {
       try {
         const response = await fetch(
           "/plugins/signalk-offshore-blogging/api/reassemble",

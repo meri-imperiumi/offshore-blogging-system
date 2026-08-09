@@ -144,7 +144,7 @@ describe("chunkData", () => {
     assert.ok(chunks.length > 0);
     assert.ok(chunks.length <= 99);
 
-    chunks.forEach((chunk, i) => {
+    chunks.forEach((chunk, _i) => {
       assert.match(chunk, /^0805T/);
       assert.match(chunk, /^0805T\d{2}\d{2}[0-9a-f]{4}:/);
     });
@@ -190,7 +190,7 @@ describe("reassembleChunks", () => {
     // Parse chunks into entries format
     const entries = {};
     const chunkRegex = /^0805T(\d{2})(\d{2})([0-9a-f]{4}):(.*)$/;
-    chunks.forEach((chunk, i) => {
+    chunks.forEach((chunk, _i) => {
       const match = chunk.match(chunkRegex);
       if (match) {
         const [, idx, total, crc, dataPiece] = match;
