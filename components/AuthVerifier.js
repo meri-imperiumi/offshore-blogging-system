@@ -33,12 +33,13 @@ class AuthVerifier extends Component {
 
   handle(input, output) {
     if (!input.hasData("in")) {
-      return null;
+      return;
     }
 
     const email = input.getData("in");
 
-    // Initialize assembly message
+    // Initialize assembly message. imapUid is carried through the pipeline
+    // so ImapAcker can mark the original email as seen after processing.
     const msg = {
       errors: [],
       identityHash: null,
@@ -47,6 +48,7 @@ class AuthVerifier extends Component {
       intent: null,
       payload: email.body || "",
       confidence: "none",
+      imapUid: email.imapUid || null,
     };
 
     // Extract reply-to address
@@ -173,7 +175,10 @@ class AuthVerifier extends Component {
 
     return {
       identityHash: device.identity_hash,
-      confidence: "high",
+      // Medium, not high: the bounce token identifies the device, but the
+      // message body is not cryptographically signed (unlike Winlink's
+      // Ed25519 signature). See SPEC.md §Email signatures.
+      confidence: "medium",
     };
   }
 

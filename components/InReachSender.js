@@ -88,7 +88,7 @@ class InReachSender extends Component {
     }
   }
 
-  async handle(input, output) {
+  handle(input, output) {
     // Process control ports
     if (input.hasData("replyaddress")) {
       this.replyAddress = input.getData("replyaddress");
@@ -97,9 +97,14 @@ class InReachSender extends Component {
       this.delayMs = input.getData("delayms");
     }
 
-    // Wait for IN port
+    // Wait for IN port. Sync `return` (not `return null`): in an async
+    // handle, `return null` resolves the promise and NoFlo calls
+    // output.sendDone(null), forwarding null to the out port. A sync
+    // handle's `return` yields undefined, which NoFlo treats as
+    // "preconditions not met" without sending anything. See the
+    // noflo-webserver Server.coffee lifecycle pattern.
     if (!input.hasData("in")) {
-      return null;
+      return;
     }
 
     const msg = input.getData("in");
@@ -169,6 +174,15 @@ class InReachSender extends Component {
 
     this.ensureClient();
 
+    // Fire-and-forget the async transmission. The sync handle returns
+    // undefined (no auto-sendDone); transmit() resolves the output itself
+    // via output.sendDone() on success or error. This mirrors the
+    // noflo-webserver Server.coffee pattern: sync process function, async
+    // work in a callback that owns output lifecycle.
+    this.transmit(msg, replyUrl, toSend, chunks.length, output);
+  }
+
+  async transmit(msg, replyUrl, toSend, chunkCount, output) {
     let sent = 0;
     try {
       for (let i = 0; i < toSend.length; i++) {
@@ -182,26 +196,27 @@ class InReachSender extends Component {
     } catch (err) {
       const code = err.code || "API_FAILURE";
       console.error(
-        `[InReachSender] Send failed at chunk ${sent + 1}/${chunks.length}: ${code} - ${err.message}`,
+        `[InReachSender] Send failed at chunk ${sent + 1}/${chunkCount}: ${code} - ${err.message}`,
       );
       const wrapped = new InReachClient.InReachError(
-        `InReach transmission failed at chunk ${sent + 1}/${chunks.length}: ${err.message}`,
+        `InReach transmission failed at chunk ${sent + 1}/${chunkCount}: ${err.message}`,
         code,
         err.status,
       );
       fail(msg, wrapped);
-      return output.sendDone({ error: msg });
+      output.sendDone({ error: msg });
+      return;
     }
 
     // Build a confirmation IP, preserving routing fields.
     const confirm = fork(msg, ["payload", "intent", "notifyText"]);
     confirm.intent = "NOTIFY";
-    confirm.payload = `Sent ${chunks.length} message(s) via InReach`;
-    confirm.notifyText = `InReach: ${chunks.length} messages sent`;
+    confirm.payload = `Sent ${chunkCount} message(s) via InReach`;
+    confirm.notifyText = `InReach: ${chunkCount} messages sent`;
     console.log(
-      `[InReachSender] Successfully sent ${chunks.length} message(s)`,
+      `[InReachSender] Successfully sent ${chunkCount} message(s)`,
     );
-    return output.sendDone(confirm);
+    output.sendDone(confirm);
   }
 
   delay(ms) {

@@ -4,69 +4,50 @@ import { describe, it } from "node:test";
 
 // Load component via createRequire so the test shares the component's CJS module instance
 const require = createRequire(import.meta.url);
-const ImapListenerModule = require("../components/ImapListener.js");
+const ImapFetcherModule = require("../components/ImapFetcher.js");
 
-describe("ImapListener component", () => {
+describe("ImapFetcher component", () => {
   it("exists and exports getComponent", () => {
-    assert.strictEqual(typeof ImapListenerModule.getComponent, "function");
+    assert.strictEqual(typeof ImapFetcherModule.getComponent, "function");
   });
 
   it("creates a component without crashing", () => {
-    const component = ImapListenerModule.getComponent();
+    const component = ImapFetcherModule.getComponent();
     assert(component !== null);
     assert.strictEqual(typeof component.handle, "function");
   });
 
-  it("has the expected inports (config + interval)", () => {
-    const component = ImapListenerModule.getComponent();
+  it("has the expected inports (bang trigger + IMAP config)", () => {
+    const component = ImapFetcherModule.getComponent();
     const portNames = Object.keys(component.inPorts.ports);
+    assert.ok(portNames.includes("in"), "should have in inport (bang trigger)");
     assert.ok(portNames.includes("host"), "should have host inport");
     assert.ok(portNames.includes("port"), "should have port inport");
     assert.ok(portNames.includes("username"), "should have username inport");
     assert.ok(portNames.includes("password"), "should have password inport");
     assert.ok(portNames.includes("mailbox"), "should have mailbox inport");
-    assert.ok(portNames.includes("interval"), "should have interval inport");
-    // Config ports are control (non-triggering); interval triggers
+    // Config ports are control (non-triggering); `in` triggers
     assert.strictEqual(
       component.inPorts.ports.host.options.control,
       true,
       "host should be control (non-triggering)",
     );
     assert.strictEqual(
-      component.inPorts.ports.interval.options.control,
+      component.inPorts.ports.in.options.control,
       false,
-      "interval should be non-control (triggering)",
+      "in should be non-control (triggering)",
     );
   });
 
   it("has the expected outports", () => {
-    const component = ImapListenerModule.getComponent();
+    const component = ImapFetcherModule.getComponent();
     const portNames = Object.keys(component.outPorts.ports);
     assert.ok(portNames.includes("out"), "should have out outport");
   });
 
-  it("is a generator component (autoOrdering disabled)", () => {
-    const component = ImapListenerModule.getComponent();
-    assert.strictEqual(component.autoOrdering, false);
-  });
+  it("parses an ImapFlow message into an email object", () => {
+    const component = ImapFetcherModule.getComponent();
 
-  it("parses an ImapFlow message into an email object", async () => {
-    const component = ImapListenerModule.getComponent();
-
-    // Mock the generator output to capture what would be sent
-    const sent = [];
-    component.generatorOutput = {
-      send: (map) => {
-        sent.push(map);
-      },
-    };
-
-    // Mock client for messageFlagsSet
-    component.client = {
-      messageFlagsSet: async () => {},
-    };
-
-    // Build a mock ImapFlow message that resembles an InReach email.
     // ImapFlow returns requested headers as a raw Buffer of "Key: Value" lines.
     const rawHeaders = Buffer.from(
       [
@@ -95,17 +76,55 @@ describe("ImapListener component", () => {
       headers: rawHeaders,
     };
 
-    await component.processMessage(mockMessage);
+    const email = component.parseMessage(mockMessage);
 
-    assert.strictEqual(sent.length, 1, "should have sent one email");
-    const email = sent[0].out;
     assert.ok(email, "email should be defined");
+    assert.strictEqual(email.imapUid, 1, "email should carry imapUid");
     assert.strictEqual(email.from.address, "no.reply.inreach@garmin.com");
     assert.strictEqual(email.subject, "Test message from Garmin inReach");
     assert.strictEqual(email.body, "PING");
     assert.ok(
       email.returnPath.includes("testdevice123"),
       "returnPath should contain device ID",
+    );
+  });
+
+  it("emits InReach, Winlink, and Saildocs messages", () => {
+    const component = ImapFetcherModule.getComponent();
+
+    const makeEmail = (fromAddr, body) => ({
+      imapUid: Math.floor(Math.random() * 1000),
+      from: { address: fromAddr, name: "" },
+      to: { address: "boat@example.com", name: "" },
+      subject: "test",
+      body,
+    });
+
+    assert.ok(component.isSystemMessage(makeEmail("no.reply.inreach@garmin.com", "PING")));
+    assert.ok(
+      component.isSystemMessage(makeEmail("call@winlink.org", "---BEGIN RETICULUM METADATA---")),
+    );
+    assert.ok(component.isSystemMessage(makeEmail("query@saildocs.com", "GRIB data")));
+  });
+
+  it("skips unrelated messages (leaves them unread)", () => {
+    const component = ImapFetcherModule.getComponent();
+
+    const makeEmail = (fromAddr, body) => ({
+      imapUid: 999,
+      from: { address: fromAddr, name: "" },
+      to: { address: "boat@example.com", name: "" },
+      subject: "test",
+      body,
+    });
+
+    assert.ok(
+      !component.isSystemMessage(makeEmail("friend@gmail.com", "Hey, how's it going?")),
+      "personal email should be skipped",
+    );
+    assert.ok(
+      !component.isSystemMessage(makeEmail("newsletter@medium.com", "Check out these articles")),
+      "newsletter should be skipped",
     );
   });
 });

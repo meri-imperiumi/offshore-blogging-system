@@ -30,7 +30,7 @@ class PongHandler extends Component {
 
   handle(input, output) {
     if (!input.hasData("in")) {
-      return null;
+      return;
     }
 
     const msg = input.getData("in");

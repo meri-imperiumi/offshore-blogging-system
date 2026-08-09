@@ -5,7 +5,7 @@
  * 
  * Basic end-to-end test for InReach communication using NoFlo
  *
- * Flow: ImapListener -> AuthVerifier -> PongHandler -> InReachSender
+ * Flow: RunInterval -> ImapFetcher -> AuthVerifier -> PongHandler -> InReachSender -> ImapAcker
  *
  * The boat sends a "PING" message from its InReach device. The cloud
  * receives it via IMAP, verifies the sender, responds with "PONG".
@@ -77,23 +77,50 @@ const noflo = require("noflo");
 const graph = noflo.graph.createGraph("ping-pong");
 
 // Add nodes
-graph.addNode("Listener", "ImapListener");
+graph.addNode("Fetcher", "ImapFetcher");
 graph.addNode("Verifier", "AuthVerifier");
 graph.addNode("PongHandler", "PongHandler");
 graph.addNode("Sender", "InReachSender");
+graph.addNode("Acker", "ImapAcker");
+
+// core/RunInterval: emits a bang every N ms to trigger a fetch cycle
+graph.addNode("Timer", "core/RunInterval");
+
+// core/ReadEnv nodes: each reads one env var and fans out to Fetcher + Acker
+graph.addNode("HostEnv", "core/ReadEnv");
+graph.addNode("PortEnv", "core/ReadEnv");
+graph.addNode("UserEnv", "core/ReadEnv");
+graph.addNode("PassEnv", "core/ReadEnv");
+graph.addNode("MailboxEnv", "core/ReadEnv");
 
 // Add edges
-graph.addEdge("Listener", "out", "Verifier", "in");
+graph.addEdge("Timer", "out", "Fetcher", "in");
+graph.addEdge("Fetcher", "out", "Verifier", "in");
 graph.addEdge("Verifier", "out", "PongHandler", "in");
 graph.addEdge("PongHandler", "out", "Sender", "in");
+graph.addEdge("Sender", "out", "Acker", "in");
+
+// ReadEnv -> Fetcher + Acker (single source, fanned out)
+graph.addEdge("HostEnv", "out", "Fetcher", "host");
+graph.addEdge("HostEnv", "out", "Acker", "host");
+graph.addEdge("PortEnv", "out", "Fetcher", "port");
+graph.addEdge("PortEnv", "out", "Acker", "port");
+graph.addEdge("UserEnv", "out", "Fetcher", "username");
+graph.addEdge("UserEnv", "out", "Acker", "username");
+graph.addEdge("PassEnv", "out", "Fetcher", "password");
+graph.addEdge("PassEnv", "out", "Acker", "password");
+graph.addEdge("MailboxEnv", "out", "Fetcher", "mailbox");
+graph.addEdge("MailboxEnv", "out", "Acker", "mailbox");
 
 // Add IIPs (Initial Information Packets)
-graph.addInitial(process.env.IMAP_HOST, "Listener", "host");
-graph.addInitial(parseInt(process.env.IMAP_PORT) || 993, "Listener", "port");
-graph.addInitial(process.env.IMAP_USERNAME, "Listener", "username");
-graph.addInitial(process.env.IMAP_PASSWORD, "Listener", "password");
-graph.addInitial(process.env.IMAP_MAILBOX || "INBOX", "Listener", "mailbox");
-graph.addInitial(15, "Listener", "interval");
+graph.addInitial("IMAP_HOST", "HostEnv", "key");
+graph.addInitial("IMAP_PORT", "PortEnv", "key");
+graph.addInitial("IMAP_USERNAME", "UserEnv", "key");
+graph.addInitial("IMAP_PASSWORD", "PassEnv", "key");
+graph.addInitial("IMAP_MAILBOX", "MailboxEnv", "key");
+// RunInterval: 15s poll cycle (ms). start bang kicks it off.
+graph.addInitial(15000, "Timer", "interval");
+graph.addInitial(true, "Timer", "start");
 graph.addInitial(process.env.INREACH_REPLY_ADDRESS, "Sender", "replyaddress");
 graph.addInitial(5000, "Sender", "delayms");
 

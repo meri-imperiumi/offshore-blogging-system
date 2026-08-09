@@ -1,16 +1,36 @@
 # Ping-Pong Test Graph
 # Minimal graph for testing InReach message flow
 
-# 1. IMAP Ingestion
-'imap.mailbox.org' -> HOST Listener(ImapListener)
-'993' -> PORT Listener
-'{{ USERNAME }}' -> USERNAME Listener
-'{{ PASSWORD }}' -> PASSWORD Listener
-'INBOX' -> MAILBOX Listener
-'15' -> INTERVAL Listener
+# 0. Polling timer: sends a bang every 15s to trigger a fetch cycle
+'15000' -> INTERVAL Timer(core/RunInterval)
+'' -> START Timer
+
+# IMAP credentials read from environment, fanned out to Fetcher + Acker
+'IMAP_HOST' -> KEY HostEnv(core/ReadEnv)
+HostEnv OUT -> HOST Fetcher(ImapFetcher)
+HostEnv OUT -> HOST Acker(ImapAcker)
+
+'IMAP_PORT' -> KEY PortEnv(core/ReadEnv)
+PortEnv OUT -> PORT Fetcher
+PortEnv OUT -> PORT Acker
+
+'IMAP_USERNAME' -> KEY UserEnv(core/ReadEnv)
+UserEnv OUT -> USERNAME Fetcher
+UserEnv OUT -> USERNAME Acker
+
+'IMAP_PASSWORD' -> KEY PassEnv(core/ReadEnv)
+PassEnv OUT -> PASSWORD Fetcher
+PassEnv OUT -> PASSWORD Acker
+
+'IMAP_MAILBOX' -> KEY MailboxEnv(core/ReadEnv)
+MailboxEnv OUT -> MAILBOX Fetcher
+MailboxEnv OUT -> MAILBOX Acker
+
+# 1. IMAP ingestion: each timer bang triggers a one-shot fetch cycle
+Timer OUT -> IN Fetcher
 
 # 2. Authentication
-Listener OUT -> IN Verifier(AuthVerifier)
+Fetcher OUT -> IN Verifier(AuthVerifier)
 
 # 3. PING/PONG Handler
 Verifier OUT -> IN PongHandler(PongHandler)
@@ -21,3 +41,6 @@ PongHandler OUT -> IN InReachSender(InReachSender)
 # 5. InReach Sender Configuration
 'cloud@boat.example.com' -> REPLY_ADDRESS InReachSender
 '5000' -> DELAY_MS InReachSender
+
+# 6. Mark email as seen after PONG is sent
+InReachSender OUT -> IN Acker
