@@ -1,0 +1,90 @@
+# Cloud Server Graph for offshore blogging system
+# Routes emails from InReach/Winlink to appropriate handlers
+
+# 1. IMAP Ingestion & Authentication
+'imap.mailbox.org' -> HOST Listener(ImapListener)
+'993' -> PORT Listener
+Listener OUT -> IN Verifier(AuthVerifier)
+
+# 2. Upstream Reassembly (Stateful Buffer & NACK engine)
+'15m' -> INTERVAL NackTimer(core/Ticker)
+NackTimer OUT -> CHECK Reassembler(MessageReassembler)
+Verifier OUT -> IN Reassembler
+
+# 3. Intent Routing (array port)
+'BLOG,GRIB,SAILDOCS,SYS,NOTIFY' -> ROUTES Router(ParserRouter)
+Reassembler OUT -> IN Router
+
+# Router ERROR handles failed(msg) IPs - replies to sender
+Router ERROR -> IN ReplyDispatcher(ReplyDispatcher)
+Router MISSED -> IN ErrorLogger(ErrorLogger)
+
+# 4. Application Logic: Blog Pipeline
+'blog:publish' -> PERMISSION BlogAuth(DacarAuthorizer)
+Router OUT[0] -> IN BlogAuth
+BlogAuth DENIED -> IN ReplyDispatcher
+
+BlogAuth OUT -> IN BlogDecoder(BlogDecoder)
+BlogDecoder OUT -> IN GitPublisher(GitPublisher)
+# BlogDecoder ERROR (bad CRC, dict version mismatch, etc.) goes to ReplyDispatcher
+BlogDecoder OUT -> IN ReplyDispatcher
+GitPublisher OUT -> IN ReplyDispatcher
+
+# 5. Application Logic: GRIB Weather Pipeline
+'grib:request' -> PERMISSION GribAuth(DacarAuthorizer)
+Router OUT[1] -> IN GribAuth
+GribAuth DENIED -> IN ReplyDispatcher
+
+GribAuth OUT -> IN GribFetcher(GribFetcher)
+GribFetcher DIRECT -> IN GribChunker(GribChunker)
+# GribFetcher OUTBOX goes to SMTP regardless of channel (new outbound request to Saildocs)
+GribFetcher OUTBOX -> IN SmtpResponder(SmtpResponder)
+
+# 6. Third-Party Bridge (Saildocs Ingestion)
+Router OUT[2] -> IN SaildocsMatcher(SaildocsMatcher)
+SaildocsMatcher OUT -> IN GribChunker
+
+# 7. System Commands & The GRIB Gatekeeper
+'sys:command' -> PERMISSION SysAuth(DacarAuthorizer)
+Router OUT[3] -> IN SysAuth
+SysAuth DENIED -> IN ReplyDispatcher
+
+SysAuth OUT -> IN CmdRouter(CommandRouter)
+'GATE,STATUS' -> ROUTES CmdRouter
+CmdRouter OUT[0] -> COMMAND Gate(GribGate)
+CmdRouter OUT[1] -> IN StatusBuilder(StatusBuilder)
+CmdRouter MISSED -> IN ErrorLogger
+
+GribChunker OUT -> IN Gate
+# If the payload is small (<= N chunks) or user sends "YES", Gate releases it here:
+Gate OUT -> IN ReplyDispatcher
+# If the payload is too large (> N chunks), Gate holds it and routes a NOTIFY message back:
+Gate NOTIFY -> IN ReplyDispatcher
+
+StatusBuilder OUT -> IN ReplyDispatcher
+
+# 8. Feedback Loop / Notifications (CANCEL confirmations, etc.)
+Router OUT[4] -> IN ReplyDispatcher
+
+# 9. Channel-aware reply delivery
+ReplyDispatcher SMTP -> IN SmtpResponder(SmtpResponder)
+ReplyDispatcher INREACH -> IN InReachSender(InReachSender)
+
+# 9b. InReach failure handling: log every failure (file record, matches
+# RngitSyncer/GithubPusher pattern) AND alert the operator out-of-band for
+# unrecoverable ones (dead reply channel / bad config). The alert goes via
+# SMTP through SmtpResponder, never back through InReachSender (cloud.md's
+# "not itself routed through this same component" rule). AlertComposer is
+# rate-limited (max one per error code per hour) and filters to unrecoverable
+# codes only; transient failures (rate limit, network) are logged but not
+# paged. alertaddress is deployment config (set at runtime, like smtp creds).
+InReachSender ERROR -> IN ErrorLogger(ErrorLogger)
+InReachSender ERROR -> IN AlertComposer(AlertComposer)
+AlertComposer OUT -> IN SmtpResponder
+
+# 10. Periodic Hi-Fi Sync (boat repo sync + GitHub push)
+'6h' -> INTERVAL RngitTimer(core/Ticker)
+RngitTimer OUT -> IN RngitSyncer(RngitSyncer)
+RngitSyncer OUT -> IN GithubPusher(GithubPusher)
+RngitSyncer ERROR -> IN ErrorLogger
+GithubPusher ERROR -> IN ErrorLogger
