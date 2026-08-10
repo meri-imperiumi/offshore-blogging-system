@@ -514,7 +514,7 @@ describe("InReachClient retry/backoff", () => {
 
   it("retries a 429 response and succeeds on the second attempt", async () => {
     const calls = [];
-    const request = async (url, opts) => {
+    const request = async (_url, _opts) => {
       calls.push({ status: calls.length === 0 ? 429 : 200 });
       if (calls.length === 1) {
         return { status: 429, text: "rate limited", headers: {} };
@@ -532,7 +532,7 @@ describe("InReachClient retry/backoff", () => {
   });
 
   it("honors Retry-After header on 429", async () => {
-    const sleepCalls = [];
+    const _sleepCalls = [];
     // Wrap requestWithRetry with a sleep spy by using a custom sleep is not
     // directly possible; instead, verify the total attempts and outcome.
     let attempt = 0;

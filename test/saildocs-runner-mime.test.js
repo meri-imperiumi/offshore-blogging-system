@@ -123,11 +123,11 @@ describe("Saildocs runner MIME/GRIB extraction", () => {
       Buffer.from([0x01, 0x02, 0x03, 0x04]),
     ]);
     const raw = Buffer.from(
-      [
+      `${[
         `From: query-reply@saildocs.com`,
         `Content-Type: application/octet-stream`,
         ``,
-      ].join("\r\n") + "\r\n",
+      ].join("\r\n")}\r\n`,
       "latin1",
     );
     // Append the raw GRIB bytes after the header.

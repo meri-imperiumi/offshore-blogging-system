@@ -48,6 +48,12 @@ class MessageReassembler extends Component {
           datatype: "object",
           description: "Reassembled assembly message",
         },
+        buffered: {
+          datatype: "object",
+          description:
+            "Chunk that was buffered but sequence not yet complete. " +
+            "Carries imapUid so ImapAcker can mark the email as seen.",
+        },
       },
     });
 
@@ -78,7 +84,7 @@ class MessageReassembler extends Component {
     if (input.hasData("check")) {
       input.getData("check"); // consume the bang
       this.handleStaleSweep(output);
-      return output.sendDone();
+      return output.done();
     }
 
     // Process IN port
@@ -90,7 +96,7 @@ class MessageReassembler extends Component {
 
     // Check for failed messages (pass through)
     if (failed(msg)) {
-      return output.sendDone(new IP("data", msg));
+      return output.sendDone({ out: new IP("data", msg) });
     }
 
     // Parse chunk headers from payload
@@ -98,7 +104,7 @@ class MessageReassembler extends Component {
 
     // If no headers found, treat as complete message (pass through)
     if (!headers) {
-      return output.sendDone(new IP("data", msg));
+      return output.sendDone({ out: new IP("data", msg) });
     }
 
     // Check for CANCEL command
@@ -116,9 +122,11 @@ class MessageReassembler extends Component {
       headers.partType,
     );
 
-    if (chunks.length < headers.totalChunks) {
-      // Not complete yet - don't emit anything
-      return output.sendDone();
+    if (chunks.length < headers.total) {
+      // Not complete yet - emit on `buffered` so the email can be acked
+      // (its job of delivering a valid chunk is done). The reassembled
+      // message will be emitted on `out` once all chunks arrive.
+      return output.sendDone({ buffered: new IP("data", msg) });
     }
 
     // Sequence complete - reassemble
@@ -156,7 +164,7 @@ class MessageReassembler extends Component {
         new Error("Malformed CANCEL command: transmissionId is required"),
       );
       // Don't emit anything - ErrorLogger will handle it
-      return output.sendDone();
+      return output.done();
     }
 
     const cancelTransmissionId = cancelMatch[1];
@@ -176,7 +184,7 @@ class MessageReassembler extends Component {
     msg.intent = "NOTIFY";
     msg.payload = `Cancelled transmission: ${cancelTransmissionId}`;
 
-    return output.sendDone(new IP("data", msg));
+    return output.sendDone({ out: new IP("data", msg) });
   }
 
   /**
@@ -209,6 +217,7 @@ class MessageReassembler extends Component {
     // Store part type and transmissionId for downstream use
     msg.partType = headers.partType;
     msg.transmissionId = headers.transmissionId;
+    msg.totalChunks = headers.total;
 
     // Delete the buffer
     this.db.deleteBufferChunks(
@@ -217,7 +226,7 @@ class MessageReassembler extends Component {
       headers.partType,
     );
 
-    return output.sendDone(new IP("data", msg));
+    return output.sendDone({ out: new IP("data", msg) });
   }
 
   /**

@@ -1,5 +1,6 @@
 const { Component } = require("noflo-assembly");
 const { ImapFlow } = require("imapflow");
+const libqp = require("libqp");
 
 /**
  * Parse a raw email headers Buffer into a Map of lowercased header name -> value.
@@ -191,7 +192,12 @@ class ImapFetcher extends Component {
         {
           envelope: true,
           source: true,
-          headers: ["return-path", "message-id"],
+          headers: [
+            "return-path",
+            "message-id",
+            "content-transfer-encoding",
+            "content-type",
+          ],
         },
         { uid: true },
       )) {
@@ -239,6 +245,15 @@ class ImapFetcher extends Component {
     const sourceStr = message.source.toString("utf-8");
     const headerEnd = sourceStr.indexOf("\r\n\r\n");
     body = headerEnd >= 0 ? sourceStr.slice(headerEnd + 4) : sourceStr;
+
+    // InReach emails are quoted-printable encoded: long lines are soft-broken
+    // with a trailing `=` + CRLF. Without decoding, each QP soft break leaves
+    // a stray `=` in the body that truncates base64 payloads mid-stream.
+    const cte = (headers.get("content-transfer-encoding") || "").toLowerCase();
+    if (cte === "quoted-printable") {
+      body = libqp.decode(body).toString("utf-8");
+    }
+
     body = body.trim();
 
     console.log(

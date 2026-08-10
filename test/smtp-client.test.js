@@ -2,7 +2,7 @@ import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
-import { afterEach, beforeEach, describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import tls from "node:tls";
 
 const require = createRequire(import.meta.url);
@@ -78,8 +78,8 @@ function startMockServer({ starttls = false, authRequired = true } = {}) {
     let buffer = "";
     socket.on("data", (chunk) => {
       buffer += chunk.toString("latin1");
-      let idx;
-      while ((idx = buffer.indexOf("\r\n")) !== -1) {
+      let idx = buffer.indexOf("\r\n");
+      while (idx !== -1) {
         const line = buffer.slice(0, idx);
         buffer = buffer.slice(idx + 2);
 
@@ -97,10 +97,11 @@ function startMockServer({ starttls = false, authRequired = true } = {}) {
           let sbuf = "";
           secure.on("data", (c) => {
             sbuf += c.toString("latin1");
-            let i;
-            while ((i = sbuf.indexOf("\r\n")) !== -1) {
+            let i = sbuf.indexOf("\r\n");
+            while (i !== -1) {
               handleLine(sbuf.slice(0, i));
               sbuf = sbuf.slice(i + 2);
+              i = sbuf.indexOf("\r\n");
             }
           });
           secure.on("end", () => {});
@@ -108,6 +109,7 @@ function startMockServer({ starttls = false, authRequired = true } = {}) {
         }
 
         handleLine(line);
+        idx = buffer.indexOf("\r\n");
       }
     });
   });
@@ -250,8 +252,8 @@ describe("SmtpClient", () => {
       let buf = "";
       socket.on("data", (chunk) => {
         buf += chunk.toString("latin1");
-        let idx;
-        while ((idx = buf.indexOf("\r\n")) !== -1) {
+        let idx = buf.indexOf("\r\n");
+        while (idx !== -1) {
           const line = buf.slice(0, idx);
           buf = buf.slice(idx + 2);
           if (line.toUpperCase().startsWith("EHLO")) {
@@ -261,6 +263,7 @@ describe("SmtpClient", () => {
           } else {
             socket.write("250 OK\r\n");
           }
+          idx = buf.indexOf("\r\n");
         }
       });
     });
@@ -293,8 +296,8 @@ describe("SmtpClient", () => {
       let buf = "";
       socket.on("data", (chunk) => {
         buf += chunk.toString("latin1");
-        let idx;
-        while ((idx = buf.indexOf("\r\n")) !== -1) {
+        let idx = buf.indexOf("\r\n");
+        while (idx !== -1) {
           const line = buf.slice(0, idx);
           buf = buf.slice(idx + 2);
           if (line.toUpperCase().startsWith("EHLO")) {
@@ -304,6 +307,7 @@ describe("SmtpClient", () => {
           } else {
             socket.write("250 OK\r\n");
           }
+          idx = buf.indexOf("\r\n");
         }
       });
     });

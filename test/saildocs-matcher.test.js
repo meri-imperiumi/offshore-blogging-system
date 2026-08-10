@@ -6,7 +6,7 @@ import Wrapper from "noflo-wrapper";
 import DatabaseHelper from "../lib/DbHelper.js";
 
 const require = createRequire(import.meta.url);
-const matcherModule = require("../components/SaildocsMatcher.js");
+const _matcherModule = require("../components/SaildocsMatcher.js");
 
 const DB_PATH = "/tmp/saildocs-matcher-test.db";
 

@@ -5,68 +5,23 @@
  * via low-bandwidth satellite systems (InReach, Winlink).
  */
 
-const zlib = require("node:zlib");
 const sharp = require("sharp");
 const fs = require("node:fs").promises;
 const path = require("node:path");
 const { toHex } = require("@reticulum/core");
 
-// Garmin's confirmed 1-char-safe set (support.garmin.com character-count
-// tables). Every character our chunk format can ever emit -- header and
-// base64 payload alike -- must be in here.
-const GARMIN_SAFE_CHARS = new Set(
-  "!\"#$%'()*+,-./:;<=>?@_0123456789" +
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
-);
-
-// Check if a message contains only Garmin-safe characters
-function checkGarminSafe(msg) {
-  const bad = new Set();
-  for (const char of msg) {
-    if (!GARMIN_SAFE_CHARS.has(char)) {
-      bad.add(char);
-    }
-  }
-  if (bad.size > 0) {
-    throw new Error(
-      `Message contains character(s) ${[...bad].join(", ")} not confirmed safe by ` +
-        "Garmin's character-count tables -- this would cost double or " +
-        "silently halve the whole message's limit. This is a bug in the encoder.",
-    );
-  }
-}
-
-// Constants from Python reference
-const HEADER_LEN = 4 + 1 + 2 + 2 + 4 + 1; // postid+type+idx+total+crc+':'
-const MSG_LIMIT = 155;
-const DATA_BUDGET = MSG_LIMIT - HEADER_LEN;
-
-// Default sailing dictionary for compression
-const SAIL_DICT = Buffer.from(
-  "knots wind speed course heading nautical miles position latitude " +
-    "longitude squall reef watch sunrise sunset autopilot sail sails " +
-    "mainsail jib genoa spinnaker anchor anchorage landfall passage " +
-    "crew galley cockpit engine diesel fuel battery solar generator " +
-    "weather forecast grib routing waypoint tack gybe reef swell " +
-    "following seas beam reach downwind upwind knots today we we're " +
-    "the and to of a in that with for on at is was are it this ",
-);
-
-// CRC-16 calculation (CRC-16-CCITT)
-function calculateCRC16(buffer) {
-  let crc = 0xffff;
-  for (let i = 0; i < buffer.length; i++) {
-    crc ^= buffer[i] << 8;
-    for (let j = 0; j < 8; j++) {
-      if ((crc & 0x8000) !== 0) {
-        crc = (crc << 1) ^ 0x1021;
-      } else {
-        crc = crc << 1;
-      }
-    }
-  }
-  return crc & 0xffff;
-}
+// Core blog codec logic lives in lib/BlogCodec.js so it can be shared
+// between this plugin (encode) and the NoFlo cloud pipeline (decode).
+const BlogCodec = require("../lib/BlogCodec.js");
+const {
+  DATA_BUDGET,
+  SAIL_DICT,
+  calculateCRC16,
+  compressText,
+  decompressText,
+  chunkData,
+  reassembleChunks,
+} = BlogCodec;
 
 // Find images referenced in markdown content
 function findImagesFromMarkdown(body, _postDate, blogPath) {
@@ -198,111 +153,6 @@ function parseFrontMatter(text) {
     date: frontMatter.date || frontMatter.created,
     body,
   };
-}
-
-// Compress text payload using deflate with optional dictionary
-function compressText(title, date, body, dictionary = SAIL_DICT) {
-  const payload = Buffer.from(`${title}\x1f${date}\x1f${body}`, "utf-8");
-
-  const compressed = zlib.deflateRawSync(payload, {
-    level: 9,
-    dictionary,
-  });
-
-  return compressed;
-}
-
-// Decompress text payload
-function decompressText(compressed, dictionary = SAIL_DICT) {
-  const decompressed = zlib.inflateRawSync(compressed, {
-    dictionary,
-  });
-
-  const text = decompressed.toString("utf-8");
-  const [title, date, body] = text.split("\x1f", 3);
-
-  return { title, date, body };
-}
-
-// Chunk data into InReach messages
-function chunkData(data, postid, type) {
-  const b64 = data.toString("base64");
-  const total = Math.ceil(b64.length / DATA_BUDGET);
-
-  if (total > 99) {
-    throw new Error(
-      `${type} needs ${total} messages, header only allows 99. Compress more.`,
-    );
-  }
-
-  const crc = calculateCRC16(data);
-  const messages = [];
-
-  for (let i = 0; i < total; i++) {
-    const piece = b64.slice(i * DATA_BUDGET, (i + 1) * DATA_BUDGET);
-    const header = `${postid}${type}${String(i + 1).padStart(2, "0")}${String(total).padStart(2, "0")}${crc.toString(16).padStart(4, "0")}:`;
-    const msg = header + piece;
-    checkGarminSafe(msg);
-    messages.push(msg);
-  }
-
-  return messages;
-}
-
-// Reassemble chunks into original data
-function reassembleChunks(entries) {
-  const totals = new Set();
-  const crcs = new Set();
-
-  for (const entry of Object.values(entries)) {
-    totals.add(entry.total);
-    crcs.add(entry.crc);
-  }
-
-  if (totals.size !== 1) {
-    throw new Error(`conflicting total counts seen: ${[...totals]}`);
-  }
-  if (crcs.size !== 1) {
-    throw new Error(
-      `chunks disagree on checksum -- likely a mistyped message: ${[...crcs]}`,
-    );
-  }
-
-  const total = totals.values().next().value;
-  const expectedCrc = parseInt(crcs.values().next().value, 16);
-
-  // Check for missing chunks
-  const missing = [];
-  for (let i = 1; i <= total; i++) {
-    if (!entries[i]) {
-      missing.push(i);
-    }
-  }
-  if (missing.length > 0) {
-    throw new Error(
-      `missing chunk(s): ${missing} (have ${Object.keys(entries).sort()}/${total})`,
-    );
-  }
-
-  // Reassemble base64 data
-  const b64 = [];
-  for (let i = 1; i <= total; i++) {
-    b64.push(entries[i].data);
-  }
-  const b64String = b64.join("");
-
-  // Decode and verify CRC
-  const compressed = Buffer.from(b64String, "base64");
-  const gotCrc = calculateCRC16(compressed);
-
-  if (gotCrc !== expectedCrc) {
-    throw new Error(
-      `CRC mismatch: expected ${expectedCrc.toString(16).padStart(4, "0")} ` +
-        `got ${gotCrc.toString(16).padStart(4, "0")} -- a chunk was corrupted or mistyped`,
-    );
-  }
-
-  return compressed;
 }
 
 // Compress image to fit message budget
