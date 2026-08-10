@@ -6,6 +6,8 @@ const {
   formatLon,
   buildArea,
   buildRequest,
+  buildRouteArea,
+  buildRouteRequest,
 } = require("../public/saildocs-area.js");
 
 describe("SaildocsArea", () => {
@@ -78,6 +80,61 @@ describe("SaildocsArea", () => {
 
     it("returns null for an unknown preset", () => {
       assert.strictEqual(buildRequest("nonexistent", 29, -66), null);
+    });
+  });
+
+  describe("buildRouteArea", () => {
+    it("builds a box covering both points plus margin (boat NE of dest)", () => {
+      // Boat at 29N,66W heading to 35N,70W, margin 2
+      // south = min(29,35) - 2 = 27  → 27n
+      // north = max(29,35) + 2 = 37  → 37n
+      // west  = min(-66,-70) - 2 = -72 → 72w
+      // east  = max(-66,-70) + 2 = -64 → 64w
+      const area = buildRouteArea(29, -66, 35, -70, 2);
+      assert.strictEqual(area, "27n,37n,72w,64w");
+    });
+
+    it("is order-independent (destination south of boat)", () => {
+      // Boat at 29N,66W heading to 20N,60W, margin 2
+      // south = min(29,20) - 2 = 18  → 18n
+      // north = max(29,20) + 2 = 31  → 31n
+      // west  = min(-66,-60) - 2 = -68 → 68w
+      // east  = max(-66,-60) + 2 = -58 → 58w
+      const area = buildRouteArea(29, -66, 20, -60, 2);
+      assert.strictEqual(area, "18n,31n,68w,58w");
+    });
+
+    it("handles a route crossing the equator", () => {
+      // From 5S to 5N, margin 1
+      // south = -6 → 6s, north = 6 → 6n
+      // west  = 0 - 1 = -1 → 1w, east = 0 + 1 = 1 → 1e
+      const area = buildRouteArea(-5, 0, 5, 0, 1);
+      assert.strictEqual(area, "6s,6n,1w,1e");
+    });
+
+    it("collapses to a centered box when margin is 0 and points coincide", () => {
+      const area = buildRouteArea(29, -66, 29, -66, 0);
+      assert.strictEqual(area, "29n,29n,66w,66w");
+    });
+  });
+
+  describe("buildRouteRequest", () => {
+    it("builds a full route request string from the local-wind preset", () => {
+      // Boat 29N,66W → dest 35N,70W, margin 2 → area 27n,37n,72w,64w
+      const req = buildRouteRequest("local-wind", 29, -66, 35, -70, 2);
+      assert.strictEqual(req, "gfs:27n,37n,72w,64w|2,2|12,24,36,48|wind");
+    });
+
+    it("reuses the preset's grid/hours/params (extended preset)", () => {
+      // Boat 0,0 → dest 10N,20E, margin 3
+      // south = -3 → 3s, north = 13 → 13n
+      // west  = -3 → 3w, east = 23 → 23e
+      const req = buildRouteRequest("extended", 0, 0, 10, 20, 3);
+      assert.strictEqual(req, "gfs:3s,13n,3w,23e|8,8|12,48|wind,press");
+    });
+
+    it("returns null for an unknown preset", () => {
+      assert.strictEqual(buildRouteRequest("nonexistent", 0, 0, 1, 1, 1), null);
     });
   });
 

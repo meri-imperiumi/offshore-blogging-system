@@ -37,6 +37,45 @@ class OffshoreBloggingUI {
     }
   }
 
+  /**
+   * Load persisted weather-route settings (destination + margin + whether
+   * route mode is enabled). The boat's own position isn't persisted — it's
+   * read fresh from Signal K on each rebuild.
+   */
+  loadWeatherRoute() {
+    try {
+      const stored = localStorage.getItem("offshore-blogging:weather-route");
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Persist the current weather-route settings so they survive a page
+   * reload. Reads the live DOM values rather than taking args so callers
+   * can fire it on any input event without building the object themselves.
+   */
+  saveWeatherRoute() {
+    try {
+      const routeToggle = document.getElementById("weatherRouteToggle");
+      const destLat = document.getElementById("weatherDestLat");
+      const destLon = document.getElementById("weatherDestLon");
+      const margin = document.getElementById("weatherMargin");
+      localStorage.setItem(
+        "offshore-blogging:weather-route",
+        JSON.stringify({
+          enabled: routeToggle ? routeToggle.checked : false,
+          destLat: destLat ? destLat.value : "",
+          destLon: destLon ? destLon.value : "",
+          margin: margin ? margin.value : "",
+        }),
+      );
+    } catch {
+      // localStorage may be unavailable (private mode, etc.) - skip
+    }
+  }
+
   markCopied(text) {
     this.copiedMessages.add(text);
     this.saveCopiedMessages();
@@ -102,29 +141,50 @@ class OffshoreBloggingUI {
   }
 
   initWeatherTab() {
-    document
-      .getElementById("weatherPreset")
-      .addEventListener("change", async (e) => {
-        const presetId = e.target.value;
-        if (!presetId) return;
+    const preset = document.getElementById("weatherPreset");
+    const routeToggle = document.getElementById("weatherRouteToggle");
+    const routeFields = document.getElementById("weatherRouteFields");
+    const destLat = document.getElementById("weatherDestLat");
+    const destLon = document.getElementById("weatherDestLon");
+    const margin = document.getElementById("weatherMargin");
 
-        const pos = await this.getBoatPosition();
-        if (!pos) {
-          this.showPositionError(
-            "Unable to read boat position from Signal K. " +
-              "Enter the Saildocs request manually.",
-          );
-          return;
+    // Restore persisted route settings (destination + margin + toggle) so a
+    // page reload doesn't lose the destination the user already entered.
+    // The boat's own position isn't persisted — it's read fresh from Signal K.
+    const saved = this.loadWeatherRoute();
+    if (saved.destLat != null && destLat) destLat.value = saved.destLat;
+    if (saved.destLon != null && destLon) destLon.value = saved.destLon;
+    if (saved.margin != null && margin) margin.value = saved.margin;
+    if (routeToggle) {
+      routeToggle.checked = !!saved.enabled;
+      if (routeFields) {
+        routeFields.style.display = routeToggle.checked ? "block" : "none";
+      }
+    }
+
+    // Rebuild the Saildocs request whenever any input that affects it
+    // changes: the preset (always), or the destination/margin (only in
+    // route mode). getBoatPosition() caches, so calling on every keystroke
+    // is cheap.
+    preset.addEventListener("change", () => this.rebuildWeatherRequest());
+
+    if (routeToggle) {
+      routeToggle.addEventListener("change", () => {
+        if (routeFields) {
+          routeFields.style.display = routeToggle.checked ? "block" : "none";
         }
-
-        const request = window.SaildocsArea.buildRequest(
-          presetId,
-          pos.lat,
-          pos.lon,
-        );
-        document.getElementById("weatherRequest").value = request;
-        this.showPosition(pos);
+        this.saveWeatherRoute();
+        this.rebuildWeatherRequest();
       });
+    }
+    [destLat, destLon, margin].forEach((el) => {
+      if (el) {
+        el.addEventListener("input", () => {
+          this.saveWeatherRoute();
+          this.rebuildWeatherRequest();
+        });
+      }
+    });
 
     document
       .getElementById("weatherBtn")
@@ -557,6 +617,59 @@ class OffshoreBloggingUI {
     }
     document.body.removeChild(textarea);
     return ok;
+  }
+
+  /**
+   * Rebuild the Saildocs request in the weather tab from the current UI
+   * state. Picks the route variant (current position → destination +
+   * margin) when the route toggle is on and a valid destination is given,
+   * otherwise the centered-on-boat variant.
+   */
+  async rebuildWeatherRequest() {
+    const presetId = document.getElementById("weatherPreset").value;
+    if (!presetId) return;
+
+    const pos = await this.getBoatPosition();
+    if (!pos) {
+      this.showPositionError(
+        "Unable to read boat position from Signal K. " +
+          "Enter the Saildocs request manually.",
+      );
+      return;
+    }
+    this.showPosition(pos);
+
+    const routeToggle = document.getElementById("weatherRouteToggle");
+    let request;
+    if (routeToggle?.checked) {
+      const destLat = parseFloat(
+        document.getElementById("weatherDestLat").value,
+      );
+      const destLon = parseFloat(
+        document.getElementById("weatherDestLon").value,
+      );
+      const margin = parseFloat(document.getElementById("weatherMargin").value);
+      // While the user is still typing the destination, don't clobber the
+      // field with a half-built request — just leave it empty until both
+      // coordinates are valid numbers.
+      if (Number.isNaN(destLat) || Number.isNaN(destLon)) {
+        document.getElementById("weatherRequest").value = "";
+        return;
+      }
+      const marginVal = Number.isNaN(margin) ? 0 : margin;
+      request = window.SaildocsArea.buildRouteRequest(
+        presetId,
+        pos.lat,
+        pos.lon,
+        destLat,
+        destLon,
+        marginVal,
+      );
+    } else {
+      request = window.SaildocsArea.buildRequest(presetId, pos.lat, pos.lon);
+    }
+
+    document.getElementById("weatherRequest").value = request ?? "";
   }
 
   /**

@@ -86,12 +86,58 @@ function buildRequest(presetId, lat, lon) {
   return `${preset.model}:${area}|${preset.grid}|${preset.hours}|${preset.params}`;
 }
 
+/**
+ * Build a Saildocs area string (south,north,west,east) that covers two
+ * positions — the boat's current position and a destination — plus a
+ * uniform margin (in degrees) around the whole bounding box.
+ *
+ * Unlike buildArea (a box centered on one point), this is a route variant:
+ * the box hugs both endpoints and the route between them, expanded by the
+ * margin so forecast data extends past either end.
+ *
+ * Example: buildRouteArea(29, -66, 35, -70, 2)
+ *   → south = min(29,35) - 2 = 27  → 27n
+ *   → north = max(29,35) + 2 = 37  → 37n
+ *   → west  = min(-66,-70) - 2 = -72 → 72w
+ *   → east  = max(-66,-70) + 2 = -64 → 64w
+ *   → "27n,37n,72w,64w"
+ *
+ * Note: like buildArea, this does not handle antimeridian crossing
+ * (lonitudes near ±180); the simple min/max would wrap the wrong way.
+ * Most cruising routes don't cross it, and matching buildArea's simplicity
+ * keeps the two variants consistent.
+ */
+function buildRouteArea(lat, lon, destLat, destLon, margin) {
+  const south = Math.min(lat, destLat) - margin;
+  const north = Math.max(lat, destLat) + margin;
+  const west = Math.min(lon, destLon) - margin;
+  const east = Math.max(lon, destLon) + margin;
+  return `${formatLat(south)},${formatLat(north)},${formatLon(west)},${formatLon(east)}`;
+}
+
+/**
+ * Build a complete Saildocs request string for a route: current position
+ * to destination, with a margin (in degrees) around the bounding box.
+ *
+ * The model/grid/hours/params come from the given preset (same as the
+ * centered buildRequest); only the area differs. Returns null if the
+ * preset ID is not recognized.
+ */
+function buildRouteRequest(presetId, lat, lon, destLat, destLon, margin) {
+  const preset = PRESETS[presetId];
+  if (!preset) return null;
+  const area = buildRouteArea(lat, lon, destLat, destLon, margin);
+  return `${preset.model}:${area}|${preset.grid}|${preset.hours}|${preset.params}`;
+}
+
 const SaildocsArea = {
   PRESETS,
   formatLat,
   formatLon,
   buildArea,
   buildRequest,
+  buildRouteArea,
+  buildRouteRequest,
 };
 
 if (typeof module !== "undefined" && module.exports) {

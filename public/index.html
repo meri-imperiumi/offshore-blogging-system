@@ -335,6 +335,26 @@
           <strong>Boat position:</strong> <span id="weatherPositionText">—</span>
         </div>
         <div class="form-group">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="weatherRouteToggle">
+            Route to destination (cover current position, destination &amp; margin)
+          </label>
+        </div>
+        <div id="weatherRouteFields" style="display: none;">
+          <div class="form-group">
+            <label for="weatherDestLat">Destination latitude (°, north positive):</label>
+            <input type="number" id="weatherDestLat" step="0.0001" placeholder="e.g. 35.5" style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-color);">
+          </div>
+          <div class="form-group">
+            <label for="weatherDestLon">Destination longitude (°, east positive):</label>
+            <input type="number" id="weatherDestLon" step="0.0001" placeholder="e.g. -70.2" style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-color);">
+          </div>
+          <div class="form-group">
+            <label for="weatherMargin">Margin around route (degrees):</label>
+            <input type="number" id="weatherMargin" step="0.5" min="0" value="2" style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-color);">
+          </div>
+        </div>
+        <div class="form-group">
           <label for="weatherRequest">Saildocs request:</label>
           <input type="text" id="weatherRequest" placeholder="gfs:24n,34n,72w,60w|2,2|12,24,36,48|wind">
         </div>
