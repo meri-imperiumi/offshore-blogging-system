@@ -99,7 +99,7 @@ class GithubPusher extends Component {
       const git = new GitHelper(this.repoPath);
 
       // Check current branch
-      const currentBranch = await git.getCurrentBranch();
+      const _currentBranch = await git.getCurrentBranch();
 
       // Fetch from remote first
       await git.pull(this.githubRemote, this.branch);

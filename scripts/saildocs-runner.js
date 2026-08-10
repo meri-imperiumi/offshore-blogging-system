@@ -57,7 +57,10 @@ const requiredEnv = [
 const missing = requiredEnv.filter((key) => !process.env[key]);
 if (missing.length > 0) {
   console.error("Error: Missing required environment variables:");
-  missing.forEach((key) => console.error(`  ${key}`));
+  missing.forEach((key) => {
+    console.error(`  ${key}`);
+    return;
+  });
   console.error(
     "\nSet these in your shell or .env file:\n  export " +
       missing.join("=...\n  export ") +
@@ -351,7 +354,10 @@ noflo
       if (from === "SmtpSender.error") {
         console.error("[SmtpSender] SMTP send FAILED:");
         if (data?.errors) {
-          data.errors.forEach((e) => console.error(`  - ${e.message}`));
+          data.errors.forEach((e) => {
+            console.error(`  - ${e.message}`);
+            return;
+          });
         }
         shutdown(1);
         return;

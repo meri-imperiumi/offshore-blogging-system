@@ -268,9 +268,9 @@
     <h1>🌊 Offshore Blogging</h1>
 
     <div class="tabs">
-      <button class="tab active" data-tab="blog">Blog Post</button>
-      <button class="tab" data-tab="weather">Weather Request</button>
-      <button class="tab" data-tab="decode">Decode GRIB</button>
+      <button class="tab active" data-tab="blog" type="button">Blog Post</button>
+      <button class="tab" data-tab="weather" type="button">Weather Request</button>
+      <button class="tab" data-tab="decode" type="button">Decode GRIB</button>
     </div>
 
     <!-- Blog Post Tab -->
@@ -291,7 +291,7 @@
           <input type="number" id="imageBudget" value="5" min="1" max="99">
           <small style="color: #888;">Images are auto-detected from markdown content</small>
         </div>
-        <button id="encodeBtn">Encode Post</button>
+        <button id="encodeBtn" type="button">Encode Post</button>
       </div>
 
       <div id="encodeResults" style="display: none;">
@@ -323,7 +323,7 @@
           Select a preset or customize your request. Larger requests may exceed 10 messages.
         </div>
         <div class="form-group">
-          <label>Presets:</label>
+          <label for="weatherPreset">Presets:</label>
           <select id="weatherPreset" style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-color);">
             <option value="">-- Select preset --</option>
             <option value="gfs:24n,34n,72w,60w|2,2|12,24,36,48|wind">Local wind forecast (4 timepoints)</option>
@@ -335,7 +335,7 @@
           <label for="weatherRequest">Saildocs request:</label>
           <input type="text" id="weatherRequest" placeholder="gfs:24n,34n,72w,60w|2,2|12,24,36,48|wind">
         </div>
-        <button id="weatherBtn">Generate Request</button>
+        <button id="weatherBtn" type="button">Generate Request</button>
       </div>
 
       <div id="weatherResults" style="display: none;">
@@ -366,11 +366,11 @@
           <label for="chunkInput">Add a chunk (one per line):</label>
           <div class="chunk-input">
             <input type="text" id="chunkInput" placeholder="0805T0107a91f:LT$?F(D..">
-            <button id="addChunkBtn">Add Chunk</button>
+            <button id="addChunkBtn" type="button">Add Chunk</button>
           </div>
         </div>
-        <button id="reassembleBtn">Reassemble</button>
-        <button id="clearChunksBtn">Clear All</button>
+        <button id="reassembleBtn" type="button">Reassemble</button>
+        <button id="clearChunksBtn" type="button">Clear All</button>
       </div>
 
       <div id="chunksList" style="display: none;">

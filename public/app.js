@@ -48,10 +48,10 @@ class OffshoreBloggingUI {
       tab.addEventListener("click", () => {
         document
           .querySelectorAll(".tab")
-          .forEach((t) => t.classList.remove("active"));
+          .forEach((t) => void t.classList.remove("active"));
         document
           .querySelectorAll(".tab-content")
-          .forEach((c) => c.classList.remove("active"));
+          .forEach((c) => void c.classList.remove("active"));
         tab.classList.add("active");
         document.getElementById(tab.dataset.tab).classList.add("active");
       });
@@ -288,7 +288,7 @@ class OffshoreBloggingUI {
       .querySelectorAll(
         ".info, .error, .success, .image-preview-section, .method-section",
       )
-      .forEach((el) => el.remove());
+      .forEach((el) => void el.remove());
 
     // Show image previews if available
     if (previewData?.previews && previewData.previews.length > 0) {
@@ -364,7 +364,7 @@ class OffshoreBloggingUI {
     const versionBtns = methodsDiv.querySelectorAll(".version-btn");
     versionBtns.forEach((btn) => {
       btn.addEventListener("click", (e) => {
-        versionBtns.forEach((b) => b.classList.remove("active"));
+        versionBtns.forEach((b) => void b.classList.remove("active"));
         btn.classList.add("active");
         this.renderMessages(btn.dataset.version);
         e.stopPropagation();

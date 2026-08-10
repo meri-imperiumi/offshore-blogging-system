@@ -1,7 +1,7 @@
-const { IP } = require("noflo");
+const { Component } = require("noflo-assembly");
 const fs = require("node:fs");
+const IP = require("noflo");
 const path = require("node:path");
-const { Component, failed } = require("noflo-assembly");
 
 /**
  * ErrorLogger - Appends structured error lines to a rotating log file

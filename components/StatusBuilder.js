@@ -104,7 +104,7 @@ class StatusBuilder extends Component {
       msg.payload = statusLines.join("\n");
 
       return output.sendDone(msg);
-    } catch (err) {
+    } catch (_err) {
       // On database error, return a minimal status
       msg.intent = "NOTIFY";
       msg.payload = "Status: Error retrieving system status";

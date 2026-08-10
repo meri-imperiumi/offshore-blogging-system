@@ -52,7 +52,7 @@ class BlogDecoder extends Component {
       const decoded = Buffer.from(msg.payload, "base64");
 
       // Extract dictionary version from first byte
-      const dictVersion = decoded[0];
+      const _dictVersion = decoded[0];
       const compressedData = decoded.slice(1);
 
       // Decompress using preset dictionary
@@ -96,7 +96,7 @@ class BlogDecoder extends Component {
       // Verify CRC16 if present
       if (metadata.crc) {
         const computedCrc = this.calculateCRC16(
-          Buffer.from(frontMatter + "\n---\n" + body),
+          Buffer.from(`${frontMatter}\n---\n${body}`),
         );
         if (computedCrc !== parseInt(metadata.crc, 16)) {
           fail(msg, new Error("CRC16 mismatch"));

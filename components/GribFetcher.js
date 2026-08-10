@@ -129,7 +129,7 @@ class GribFetcher extends Component {
     return output.sendDone({ outbox: outboundMsg });
   }
 
-  handleLocalFetch(msg, payload, output) {
+  handleLocalFetch(msg, _payload, output) {
     // TODO: Implement actual local GRIB API call
     // For now, return a mock response
 

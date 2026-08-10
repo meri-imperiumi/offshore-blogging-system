@@ -91,7 +91,7 @@ class GitPublisher extends Component {
     }
 
     const blogData = msg.payload;
-    if (!blogData || !blogData.postId || !blogData.title) {
+    if (!blogData?.postId || !blogData.title) {
       fail(msg, new Error("Invalid blog post data"));
       return output.sendDone(msg);
     }

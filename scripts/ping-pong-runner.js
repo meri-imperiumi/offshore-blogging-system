@@ -27,7 +27,10 @@ const missing = requiredEnv.filter((key) => !process.env[key]);
 
 if (missing.length > 0) {
   console.error("Error: Missing required environment variables:");
-  missing.forEach((key) => console.error(`  ${key}`));
+  missing.forEach((key) => {
+    console.error(`  ${key}`);
+    return;
+  });
   console.error("\nSet these in your shell or .env file:");
   console.error(`  export ${missing.join("=...\n  export ")}=...\n`);
   process.exit(1);
@@ -141,7 +144,7 @@ noflo
     const verifierProc = network.getNode("Verifier");
 
     // Inject database into AuthVerifier for device lookup
-    if (verifierProc && verifierProc.component) {
+    if (verifierProc?.component) {
       verifierProc.component.db = db;
       console.log("[Setup] Injected DB into AuthVerifier");
     }
@@ -158,7 +161,7 @@ noflo
       const from = packet.socket.from
         ? `${packet.socket.from.process.id}.${packet.socket.from.port}`
         : "?";
-      const to = packet.socket.to
+      const _to = packet.socket.to
         ? `${packet.socket.to.process.id}.${packet.socket.to.port}`
         : "?";
       const msg = packet.data;
@@ -169,9 +172,10 @@ noflo
         if (msg.failed) {
           console.error("[Verifier ERROR] Verification failed");
           if (msg.errors) {
-            msg.errors.forEach((e) =>
-              console.error(`  - ${e.code || "error"}: ${e.message}`),
-            );
+            msg.errors.forEach((e) => {
+              console.error(`  - ${e.code || "error"}: ${e.message}`);
+              return;
+            });
           }
           return;
         }
@@ -188,9 +192,10 @@ noflo
         if (msg.failed) {
           console.error("[PongHandler ERROR] Could not build PONG");
           if (msg.errors) {
-            msg.errors.forEach((e) =>
-              console.error(`  - ${e.code || "error"}: ${e.message}`),
-            );
+            msg.errors.forEach((e) => {
+              console.error(`  - ${e.code || "error"}: ${e.message}`);
+              return;
+            });
           }
           return;
         }
@@ -214,9 +219,10 @@ noflo
       if (from === "Sender.error") {
         console.error("[InReachSender ERROR]");
         if (msg.errors) {
-          msg.errors.forEach((e) =>
-            console.error(`  - ${e.code || "error"}: ${e.message}`),
-          );
+          msg.errors.forEach((e) => {
+            console.error(`  - ${e.code || "error"}: ${e.message}`);
+            return;
+          });
         }
         return;
       }
@@ -244,7 +250,7 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 // Catch unhandled rejections that might crash the process
-process.on("unhandledRejection", (reason, promise) => {
+process.on("unhandledRejection", (reason, _promise) => {
   console.error("[Unhandled Rejection]:", reason);
 });
 process.on("exit", (code) => {

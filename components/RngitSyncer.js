@@ -1,4 +1,4 @@
-const { Component, failed } = require("noflo-assembly");
+const { Component } = require("noflo-assembly");
 const GitHelper = require("../lib/GitHelper");
 
 /**
@@ -95,7 +95,7 @@ class RngitSyncer extends Component {
       // Add rngit as remote if not already configured
       try {
         await git.exec("remote", "add", "boat", this.rngitRemote);
-      } catch (err) {
+      } catch (_err) {
         // Remote already exists, that's fine
       }
 
@@ -103,7 +103,7 @@ class RngitSyncer extends Component {
       await git.exec("fetch", "boat");
 
       // Get current branch
-      const currentBranch = await git.getCurrentBranch();
+      const _currentBranch = await git.getCurrentBranch();
 
       // Merge boat's branch into ours with -X theirs
       // This ensures hi-fi content (from boat) wins over lo-fi (our commits)

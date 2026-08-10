@@ -9,7 +9,7 @@ const zlib = require("node:zlib");
 const sharp = require("sharp");
 const fs = require("node:fs").promises;
 const path = require("node:path");
-const { Identity, toHex, fromHex } = require("@reticulum/core");
+const { toHex } = require("@reticulum/core");
 
 // Garmin's confirmed 1-char-safe set (support.garmin.com character-count
 // tables). Every character our chunk format can ever emit -- header and
@@ -456,7 +456,7 @@ async function encodeBlogPost(
 
 // Load Reticulum identity from signalk-reticulum plugin config or file path
 async function loadReticulumIdentity(app, identityPath) {
-  const { Identity, toHex, fromHex } = require("@reticulum/core");
+  const { Identity } = require("@reticulum/core");
 
   // Try file path first (explicit configuration)
   if (identityPath) {
@@ -770,7 +770,7 @@ module.exports = (app) => {
               ? path.join(blogPath, "_logs", filename)
               : path.join(blogPath, "_logs", `${filename}.md`);
             const markdown = await fs.readFile(markdownPath, "utf-8");
-            const { title, date, body } = parseFrontMatter(markdown);
+            const { title, date: _date, body } = parseFrontMatter(markdown);
             const content = `${title}\n\n${body}`;
             const signed = await signForWinlink(content, plugin.identity);
             winlinkData = {
@@ -856,7 +856,7 @@ module.exports = (app) => {
           : path.join(blogPath, "_logs", `${filename}.md`);
 
         const markdown = await fs.readFile(markdownPath, "utf-8");
-        const { title, date, body } = parseFrontMatter(markdown);
+        const { title, date: _date, body } = parseFrontMatter(markdown);
 
         // Format as plain text email body
         const content = `${title}\n\n${body}`;
