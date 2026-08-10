@@ -2,14 +2,19 @@
 # Routes emails from InReach/Winlink to appropriate handlers
 
 # 1. IMAP Ingestion & Authentication
-'imap.mailbox.org' -> HOST Listener(ImapListener)
+'imap.mailbox.org' -> HOST Listener(ImapFetcher)
 '993' -> PORT Listener
 Listener OUT -> IN Verifier(AuthVerifier)
+
+# 1b. Parse InReach lo-fi chunk headers before reassembly. (Winlink
+# blog posts and Saildocs replies carry no lo-fi header and pass straight
+# through InReachReceiver unchanged.)
+Verifier OUT -> IN Receiver(InReachReceiver)
 
 # 2. Upstream Reassembly (Stateful Buffer & NACK engine)
 '15m' -> INTERVAL NackTimer(core/Ticker)
 NackTimer OUT -> CHECK Reassembler(MessageReassembler)
-Verifier OUT -> IN Reassembler
+Receiver OUT -> IN Reassembler
 
 # 3. Intent Routing (array port)
 'BLOG,GRIB,SAILDOCS,SYS,NOTIFY' -> ROUTES Router(ParserRouter)

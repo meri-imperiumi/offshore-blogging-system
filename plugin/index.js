@@ -140,7 +140,9 @@ function parseFrontMatter(text) {
     }
   }
 
-  // Support both 'date' and 'created' fields (created is used in the log)
+  // Support both 'date' and 'created' fields (created is used in the log).
+  // The key is hardcoded to 'created' on the cloud side, so we only need
+  // the value here.
   if (!frontMatter.title) {
     throw new Error("Front matter must include at least title:");
   }
@@ -249,17 +251,36 @@ async function encodeBlogPost(
   // Find images in markdown content
   const images = findImagesFromMarkdown(body, postDate, blogPath);
 
+  // The filename is transmitted inside the compressed blob so the cloud
+  // server writes the post to the exact same _logs/<filename>.md path the
+  // boat uses — no reconstruction, no slugification, the name stays
+  // unmodified. Strip .md and any directory components; only the base name
+  // matters for the remote path.
+  const baseFilename = path.basename(filename).replace(/\.md$/, "");
+
   // Compress and chunk the text-only variant. The text-only InReach variant
   // carries no images, so the markdown image tags are stripped from the body
   // to save message budget.
   const textOnlyBody = stripImageMarkdown(body);
-  const textBlob = compressText(title, postDate, textOnlyBody, dictionary);
+  const textBlob = compressText(
+    baseFilename,
+    title,
+    postDate,
+    textOnlyBody,
+    dictionary,
+  );
   const textMessages = chunkData(textBlob, postIdToUse, "T");
 
   // Compress and chunk the full body (with image markdown retained). The
   // image variant uses these so the receiving server knows where to place the
   // separately-transmitted image chunks.
-  const fullTextBlob = compressText(title, postDate, body, dictionary);
+  const fullTextBlob = compressText(
+    baseFilename,
+    title,
+    postDate,
+    body,
+    dictionary,
+  );
   const fullTextMessages = chunkData(fullTextBlob, postIdToUse, "T");
 
   // Compress and chunk images (filter by includeImages if provided)
@@ -292,6 +313,7 @@ async function encodeBlogPost(
 
   return {
     postid: postIdToUse,
+    filename: baseFilename,
     title,
     date: postDate,
     textMessages,
@@ -661,8 +683,11 @@ module.exports = (app) => {
         const compressed = reassembleChunks(chunks);
 
         if (type === "T") {
-          const { title, date, body } = decompressText(compressed, dictionary);
-          res.json({ title, date, body });
+          const { filename, title, date, body } = decompressText(
+            compressed,
+            dictionary,
+          );
+          res.json({ filename, title, date, body });
         } else if (type === "I") {
           // Return base64-encoded image
           const base64 = compressed.toString("base64");

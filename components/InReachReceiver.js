@@ -85,6 +85,11 @@ class InReachReceiver extends Component {
     // msg <idx>/<total>:<partType>:<transmissionId>\n<payload>
     msg.payload = `msg ${chunk.chunkIndex}/${chunk.totalChunks}:${chunk.partType}:${chunk.transmissionId}\n${chunk.payload}`;
 
+    // A lo-fi chunked InReach message is a blog post (weather requests go as
+    // plain text, never in this format). Tag it so ParserRouter routes the
+    // reassembled part into the blog pipeline.
+    msg.intent = "BLOG";
+
     return output.sendDone(msg);
   }
 

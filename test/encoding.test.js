@@ -81,56 +81,65 @@ Body`;
 });
 
 describe("compressText and decompressText", () => {
-  it("should compress and decompress simple text", () => {
+  it("should compress and decompress simple text with filename", () => {
+    const filename = "2026-08-05";
     const title = "Test Post";
     const date = "2026-08-05";
     const body = "This is a test post.";
 
-    const compressed = compressText(title, date, body, SAIL_DICT);
+    const compressed = compressText(filename, title, date, body, SAIL_DICT);
     const decompressed = decompressText(compressed, SAIL_DICT);
 
+    assert.strictEqual(decompressed.filename, filename);
     assert.strictEqual(decompressed.title, title);
     assert.strictEqual(decompressed.date, date);
     assert.strictEqual(decompressed.body, body);
   });
 
   it("should compress and decompress longer text", () => {
+    const filename = "2026-08-14";
     const title = "Day 14 at Sea";
     const date = "2026-08-14";
     const body =
       "We had a wonderful day sailing downwind. The wind was steady at 15 knots from the northeast. " +
       "Crew is doing well and we expect to make landfall in two days.";
 
-    const compressed = compressText(title, date, body, SAIL_DICT);
+    const compressed = compressText(filename, title, date, body, SAIL_DICT);
     const decompressed = decompressText(compressed, SAIL_DICT);
 
+    assert.strictEqual(decompressed.filename, filename);
     assert.strictEqual(decompressed.title, title);
     assert.strictEqual(decompressed.date, date);
     assert.strictEqual(decompressed.body, body);
   });
 
   it("should handle special characters", () => {
+    const filename = "2026-08-05-émojis";
     const title = "Test with émojis";
     const date = "2026-08-05";
     const body = "Wind: 12 knots 🌊. Position: 24.5°N, 72.3°W";
 
-    const compressed = compressText(title, date, body, SAIL_DICT);
+    const compressed = compressText(filename, title, date, body, SAIL_DICT);
     const decompressed = decompressText(compressed, SAIL_DICT);
 
+    assert.strictEqual(decompressed.filename, filename);
     assert.strictEqual(decompressed.title, title);
     assert.strictEqual(decompressed.date, date);
     assert.strictEqual(decompressed.body, body);
   });
 
   it("should produce smaller output than input", () => {
+    const filename = "2026-08-05";
     const title = "Day at Sea";
     const date = "2026-08-05";
     const body =
       "We sailed all day with good winds. The autopilot handled everything well. " +
       "We caught a fish for dinner and are enjoying the sunset.";
 
-    const inputSize = Buffer.from(`${title}\x1f${date}\x1f${body}`).length;
-    const compressed = compressText(title, date, body, SAIL_DICT);
+    const inputSize = Buffer.from(
+      `${filename}\x1f${title}\x1f${date}\x1f${body}`,
+    ).length;
+    const compressed = compressText(filename, title, date, body, SAIL_DICT);
 
     assert.ok(compressed.length < inputSize, "Compression should reduce size");
   });
@@ -257,7 +266,8 @@ describe("reassembleChunks", () => {
 });
 
 describe("Encoding round-trip", () => {
-  it("should encode and decode a complete blog post", () => {
+  it("should encode and decode a complete blog post with filename", () => {
+    const filename = "2026-08-15-beautiful-sunrise";
     const title = "Day 15 - Beautiful Sunrise";
     const date = "2026-08-15";
     const body =
@@ -265,7 +275,7 @@ describe("Encoding round-trip", () => {
       "Had breakfast of porridge and coffee. Wind shifted to the south around noon.";
 
     // Compress
-    const compressed = compressText(title, date, body, SAIL_DICT);
+    const compressed = compressText(filename, title, date, body, SAIL_DICT);
 
     // Chunk
     const chunks = chunkData(compressed, "0815", "T");
@@ -292,6 +302,7 @@ describe("Encoding round-trip", () => {
     const decompressed = decompressText(reassembled, SAIL_DICT);
 
     // Verify
+    assert.strictEqual(decompressed.filename, filename);
     assert.strictEqual(decompressed.title, title);
     assert.strictEqual(decompressed.date, date);
     assert.strictEqual(decompressed.body, body);

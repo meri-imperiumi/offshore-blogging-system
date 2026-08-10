@@ -8,7 +8,7 @@ const { Component, failed } = require("noflo-assembly");
  * message suitable for sending back via InReach.
  *
  * Example output payload:
- *   Blog OK: "Fish Adventure" (4/4 chunks)
+ *   Blog OK: 2026-08-09.md (4 parts)
  */
 class BlogAckBuilder extends Component {
   constructor() {
@@ -44,16 +44,26 @@ class BlogAckBuilder extends Component {
 
     // BlogDecoder puts the decoded post in msg.payload as an object
     const post = msg.payload;
-    const title = post?.title || "(unknown)";
+    const filename = post?.filename || "(unknown)";
     const parts = msg.totalChunks || "?";
 
-    // Build a short confirmation message for InReach
-    msg.payload = `Reassembled blog post "${title}" successfully from ${parts} parts`;
-    msg.intent = "NOTIFY";
+    // Build a NEW message rather than mutating the input. Decoder.out is
+    // forked to both this component and GitPublisher, which both receive
+    // the *same* object reference. This component is synchronous and would
+    // run before GitPublisher's async handler captures msg.payload — so
+    // mutating it here would overwrite the blog data object with a string
+    // and make GitPublisher fail validation. Emitting a fresh object leaves
+    // the original msg intact for the parallel branch.
+    const reply = {
+      ...msg,
+      errors: [],
+      payload: `Blog OK: ${filename}.md (${parts} parts)`,
+      intent: "NOTIFY",
+    };
 
-    console.log(`[BlogAckBuilder] Building confirmation: ${msg.payload}`);
+    console.log(`[BlogAckBuilder] Building confirmation: ${reply.payload}`);
 
-    return output.sendDone(msg);
+    return output.sendDone(reply);
   }
 }
 

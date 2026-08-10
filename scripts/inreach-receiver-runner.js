@@ -6,16 +6,22 @@
  * Real NoFlo network test for the chunked blog post round-trip:
  *
  *   Timer → ImapFetcher → AuthVerifier → InReachReceiver
- *        → MessageReassembler → BlogDecoder → BlogAckBuilder
- *        → InReachSender → ImapAcker
+ *        → MessageReassembler → BlogDecoder → ┬ BlogAckBuilder → InReachSender → ImapAcker
+ *                                            └ GitPublisher (writes post + watermarked image to disk)
  *
  * What it verifies:
  *   a) Chunks sent from InReach (copy-paste from the Signal K webapp)
  *      are received as separate emails via IMAP
  *   b) InReachReceiver parses the lo-fi chunk header and
  *      MessageReassembler reassembles the full blog post
- *   c) BlogDecoder decodes the post and BlogAckBuilder sends a
- *      confirmation reply back to the InReach device
+ *   c) BlogDecoder combines text + image parts and GitPublisher writes
+ *      the markdown and the watermarked image(s) to an output directory
+ *   d) BlogAckBuilder sends a confirmation reply back to the InReach device
+ *
+ * Disk writing only — GitPublisher is pointed at a plain temp directory
+ * (not a git work tree), so no commit/push happens. Blog posts without
+ * pictures (text-only variant, no image markdown) complete immediately and
+ * write just the markdown file.
  */
 
 import { createRequire } from "node:module";
@@ -77,6 +83,16 @@ if (process.env.TEST_DEVICE_ID && process.env.TEST_IDENTITY_HASH) {
   console.log("");
 }
 
+// Output directory where decoded blog posts (markdown + watermarked images)
+// are written to disk. Plain directory (not a git repo), so GitPublisher
+// skips commit/push and just writes files — disk writing only for now.
+const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
+const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "obs-blog-out-"));
+console.log(`Writing decoded blog posts to: ${outputDir}`);
+console.log("");
+
 // Load NoFlo
 const noflo = require("noflo");
 
@@ -92,6 +108,7 @@ graph.addNode("Reassembler", "MessageReassembler");
 graph.addNode("Decoder", "BlogDecoder");
 graph.addNode("AckBuilder", "BlogAckBuilder");
 graph.addNode("Sender", "InReachSender");
+graph.addNode("Publisher", "GitPublisher");
 graph.addNode("Acker", "ImapAcker");
 
 // core/ReadEnv nodes for IMAP credentials
@@ -110,9 +127,18 @@ graph.addEdge("Reassembler", "out", "Decoder", "in");
 // Buffered (incomplete) chunks go straight to ImapAcker so their emails
 // are marked as seen — each chunk's delivery job is done once it's buffered.
 graph.addEdge("Reassembler", "buffered", "Acker", "in");
+// A complete part that BlogDecoder is still holding while waiting for its
+// siblings (e.g. text arrived, images not yet) is acked here too — its
+// email delivered a valid complete part, so it shouldn't be re-fetched.
+graph.addEdge("Decoder", "buffered", "Acker", "in");
 graph.addEdge("Decoder", "out", "AckBuilder", "in");
+// Decoder also feeds GitPublisher, which writes the post + watermarked
+// image(s) to the output directory (disk writing only, no git ops).
+graph.addEdge("Decoder", "out", "Publisher", "in");
 graph.addEdge("AckBuilder", "out", "Sender", "in");
 graph.addEdge("Sender", "out", "Acker", "in");
+// GitPublisher's confirmation drains to ImapAcker.
+graph.addEdge("Publisher", "out", "Acker", "in");
 
 // ReadEnv -> Fetcher + Acker
 graph.addEdge("HostEnv", "out", "Fetcher", "host");
@@ -136,6 +162,8 @@ graph.addInitial(15000, "Timer", "interval");
 graph.addInitial(true, "Timer", "start");
 graph.addInitial(process.env.INREACH_REPLY_ADDRESS, "Sender", "replyaddress");
 graph.addInitial(5000, "Sender", "delayms");
+graph.addInitial(outputDir, "Publisher", "repo_path");
+graph.addInitial(false, "Publisher", "push");
 
 noflo
   .createNetwork(graph, {
@@ -155,6 +183,11 @@ noflo
       verifierProc.component.db = db;
       console.log("[Setup] Injected DB into AuthVerifier");
     }
+
+    // Decoder.out is wired to two consumers (AckBuilder + GitPublisher), so
+    // the 'ip' event fires twice with the same message reference. Dedup the
+    // log line so "Decoded" isn't printed twice.
+    const decodedSeen = new WeakSet();
 
     // Monitor packet flow via the network 'ip' event
     network.on("ip", (packet) => {
@@ -214,15 +247,44 @@ noflo
         return;
       }
 
-      // BlogDecoder -> BlogAckBuilder: decoded blog post
+      // BlogDecoder -> ImapAcker (buffered): a complete part that is still
+      // waiting for its siblings. Its email can be acked now.
+      if (from === "Decoder.buffered") {
+        console.log(
+          `[Decoder] Part buffered waiting for siblings (uid=${msg.imapUid}), acking email`,
+        );
+        return;
+      }
+
+      // BlogDecoder -> BlogAckBuilder + GitPublisher: decoded blog post
       if (from === "Decoder.out") {
         if (msg.failed) {
           console.error("[Decoder ERROR]", msg.errors?.[0]?.message);
           return;
         }
+        if (decodedSeen.has(msg)) return;
+        decodedSeen.add(msg);
         const post = msg.payload;
         console.log(
-          `[Decoder] Decoded: title="${post?.title}", postId=${post?.postId}`,
+          `[Decoder] Decoded: ${post?.filename}.md ("${post?.title}", postId=${post?.postId})`,
+        );
+        return;
+      }
+
+      // GitPublisher -> ImapAcker: blog post written to disk
+      if (from === "Publisher.out") {
+        if (msg.errors?.length) {
+          console.error(
+            "[GitPublisher ERROR]",
+            msg.errors[0]?.message || "publish failed",
+          );
+          return;
+        }
+        const fullPath = path.join(outputDir, msg.publishedPath || "");
+        console.log(
+          `[GitPublisher] Wrote ${msg.publishedPath}` +
+            (msg.imageCount ? ` + ${msg.imageCount} image(s)` : "") +
+            ` -> ${fullPath}`,
         );
         return;
       }

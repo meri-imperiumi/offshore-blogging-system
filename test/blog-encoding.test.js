@@ -72,6 +72,23 @@ describe("encodeBlogPost text variants", () => {
     assert.ok(result.textMessages.length > 0);
     assert.ok(result.fullTextMessages.length > 0);
     assert.deepStrictEqual(result.imageMessages, []);
+    assert.strictEqual(result.filename, "2026-08-08");
+  });
+
+  it("strips .md extension from the transmitted filename", async () => {
+    const result = await encodeBlogPost(
+      "2026-08-08.md",
+      "0808",
+      5,
+      null,
+      blogPath,
+      [],
+    );
+    assert.strictEqual(result.filename, "2026-08-08");
+
+    const compressed = reassemble(result.textMessages);
+    const { filename } = decompressText(compressed, SAIL_DICT);
+    assert.strictEqual(filename, "2026-08-08");
   });
 
   it("text-only body has image markdown stripped", async () => {
@@ -85,7 +102,8 @@ describe("encodeBlogPost text variants", () => {
     );
 
     const compressed = reassemble(result.textMessages);
-    const { body } = decompressText(compressed, SAIL_DICT);
+    const { filename, body } = decompressText(compressed, SAIL_DICT);
+    assert.strictEqual(filename, "2026-08-08");
     assert.ok(!body.includes("!["), "text-only body should have no image tag");
     assert.ok(!body.includes("20260716_113823"), "image path should be gone");
     assert.ok(body.includes("wonderful day sailing"));
@@ -103,12 +121,41 @@ describe("encodeBlogPost text variants", () => {
     );
 
     const compressed = reassemble(result.fullTextMessages);
-    const { body } = decompressText(compressed, SAIL_DICT);
+    const { filename, body } = decompressText(compressed, SAIL_DICT);
+    assert.strictEqual(filename, "2026-08-08");
     assert.ok(body.includes("!["), "full body should keep image tag");
     assert.ok(
       body.includes("20260716_113823(0).jpg"),
       "full body should keep image path",
     );
+  });
+
+  it("preserves the 'created' date value for Obsidian posts", async () => {
+    // Real boat posts use 'created:' (Obsidian's convention). The date
+    // value must round-trip exactly so GitPublisher writes it back.
+    const obsidianPost = `---
+title: Obsidian Post
+created: 2026-08-08T10:00:00+03:00
+---
+Body text.`;
+    await fs.writeFile(
+      path.join(blogPath, "_logs", "obsidian-test.md"),
+      obsidianPost,
+      "utf-8",
+    );
+
+    const result = await encodeBlogPost(
+      "obsidian-test",
+      "0808",
+      5,
+      null,
+      blogPath,
+      [],
+    );
+
+    const compressed = reassemble(result.textMessages);
+    const { date } = decompressText(compressed, SAIL_DICT);
+    assert.strictEqual(date, "2026-08-08T10:00:00+03:00");
   });
 
   it("stripping reduces or equals the text-only message count", async () => {
