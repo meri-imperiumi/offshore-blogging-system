@@ -466,7 +466,7 @@ class OffshoreBloggingUI {
   }
 
   static copyToClipboard(text, btn) {
-    navigator.clipboard.writeText(text).then(() => {
+    const onCopied = () => {
       const instance = window.OffshoreBloggingUI;
       instance.markCopied(text);
       // Mark this chunk as copied persistently (don't auto-revert). The
@@ -478,7 +478,51 @@ class OffshoreBloggingUI {
       if (item) {
         item.classList.add("message-copied");
       }
+    };
+    OffshoreBloggingUI.copyText(text).then((ok) => {
+      if (ok) {
+        onCopied();
+      } else {
+        alert(
+          "Unable to copy automatically. Please select the text and copy manually.",
+        );
+      }
     });
+  }
+
+  // Copy text to the clipboard, resolving to true on success or false on
+  // failure. Prefers the async Clipboard API but falls back to a legacy
+  // hidden-textarea + execCommand approach so it also works in non-secure
+  // contexts (e.g. a Signal K server served over plain HTTP) where
+  // navigator.clipboard is unavailable.
+  static copyText(text) {
+    if (navigator.clipboard?.writeText) {
+      return navigator.clipboard
+        .writeText(text)
+        .then(() => true)
+        .catch(() => OffshoreBloggingUI.copyTextLegacy(text));
+    }
+    return Promise.resolve(OffshoreBloggingUI.copyTextLegacy(text));
+  }
+
+  static copyTextLegacy(text) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    // Place the textarea off-screen so it doesn't scroll the page or flash.
+    textarea.style.position = "fixed";
+    textarea.style.top = "-9999px";
+    textarea.style.left = "-9999px";
+    textarea.setAttribute("readonly", "");
+    document.body.appendChild(textarea);
+    textarea.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    document.body.removeChild(textarea);
+    return ok;
   }
 
   async generateWeatherRequest() {
