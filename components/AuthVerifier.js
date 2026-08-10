@@ -49,13 +49,19 @@ class AuthVerifier extends Component {
       payload: email.body || "",
       confidence: "none",
       imapUid: email.imapUid || null,
+      // Carry the raw RFC 5322 message source through the pipeline so
+      // downstream components (SaildocsMatcher) can extract binary MIME
+      // attachments that aren't in the decoded body text.
+      raw: email.raw || null,
     };
 
     // Extract reply-to address
     msg.replyTo = email.from?.address || email.replyTo?.address || null;
 
-    // Check for Saildocs (special case)
-    if (msg.replyTo === "query@saildocs.com") {
+    // Check for Saildocs (special case). Responses come from
+    // query-reply@saildocs.com, outbound requests go to query@saildocs.com —
+    // match the whole domain so both are recognized as SYS_SAILDOCS.
+    if (msg.replyTo && msg.replyTo.endsWith("@saildocs.com")) {
       msg.identityHash = "SYS_SAILDOCS";
       // Saildocs doesn't have a channel of its own - it's restored by SaildocsMatcher
       msg.channel = null;

@@ -77,6 +77,45 @@ describe("GribFetcher", () => {
     assert.ok(!collected.error, "should not emit on error");
   });
 
+  it("carries imapUid on the outbound message so ImapAcker can mark the request email as read", async () => {
+    // Without imapUid, ImapAcker skips the ack and the incoming InReach
+    // email stays unseen — re-fetched on every poll, sending duplicate
+    // Saildocs requests for one user request.
+    const msg = {
+      errors: [],
+      identityHash: "TEST_IDENTITY",
+      replyTo: "https://inreachlink.com/abc",
+      channel: "inreach",
+      intent: "GRIB",
+      imapUid: 898,
+      payload: "send query@saildocs.com:gfs:10N,20N,60W,50W|2,2|0,12|WIND",
+    };
+
+    const { data } = await runScenario({ msg });
+    assert.ok(data, "should emit on OUTBOX");
+    assert.strictEqual(
+      data.imapUid,
+      898,
+      "imapUid must be carried so ImapAcker can ack the original email",
+    );
+  });
+
+  it("carries imapUid for bare queries too", async () => {
+    const msg = {
+      errors: [],
+      identityHash: "TEST_IDENTITY",
+      replyTo: "https://inreachlink.com/abc",
+      channel: "inreach",
+      intent: "GRIB",
+      imapUid: 898,
+      payload: "gfs:20s,14s,155w,147w|2,2|12,24,36,48|wind",
+    };
+
+    const { data } = await runScenario({ msg });
+    assert.ok(data);
+    assert.strictEqual(data.imapUid, 898);
+  });
+
   it("rejects a malformed request (no colon): emits nothing on OUTBOX", async () => {
     const msg = {
       errors: [],
@@ -110,6 +149,96 @@ describe("GribFetcher", () => {
       data,
       null,
       "local-fetch path should not emit on OUTBOX (it fails internally)",
+    );
+  });
+
+  it("handles a bare Saildocs query (no 'send' prefix) and emits OUTBOX to query@saildocs.com", async () => {
+    // This is what the web UI's preset selector generates — a bare query
+    // the user sends as-is from their InReach device.
+    const msg = {
+      errors: [],
+      identityHash: "TEST_IDENTITY",
+      replyTo: "https://inreachlink.com/abc123",
+      channel: "inreach",
+      intent: "GRIB",
+      payload: "gfs:20s,14s,155w,147w|2,2|12,24,36,48|wind",
+    };
+
+    const { data } = await runScenario({ msg });
+    assert.ok(data, "should emit on OUTBOX for bare query");
+    assert.strictEqual(
+      data.to,
+      "query@saildocs.com",
+      "bare query should default to query@saildocs.com",
+    );
+    assert.strictEqual(data.replyTo, "query@saildocs.com");
+    assert.match(data.subject, /^Your query: [0-9a-f]+$/);
+    assert.ok(data.body.endsWith("\n-----"));
+    assert.ok(
+      data.body.includes("gfs:20s,14s,155w,147w|2,2|12,24,36,48|wind"),
+      "bare query should be preserved verbatim",
+    );
+  });
+
+  it("strips InReach 'View the location' boilerplate from a bare query", async () => {
+    // InReach appends "View the location..." after the user's text. The
+    // query must be extracted from the first line only, or the boilerplate
+    // would leak into the Saildocs email body.
+    const msg = {
+      errors: [],
+      identityHash: "TEST_IDENTITY",
+      replyTo: "https://inreachlink.com/abc123",
+      channel: "inreach",
+      intent: "GRIB",
+      payload:
+        "gfs:20s,14s,155w,147w|2,2|12,24,36,48|wind\n\nView the location...",
+    };
+
+    const { data } = await runScenario({ msg });
+    assert.ok(data, "should emit on OUTBOX");
+    assert.ok(
+      !data.body.includes("View the location"),
+      "InReach boilerplate must not leak into the Saildocs email body",
+    );
+    assert.ok(
+      data.body.includes("gfs:20s,14s,155w,147w|2,2|12,24,36,48|wind"),
+      "query should be preserved",
+    );
+  });
+
+  it("strips InReach boilerplate from a 'send <email>:<query>' request", async () => {
+    // The `send` shorthand path must also use only the first line. Without
+    // this, the InReach "View the location or send a reply..." boilerplate
+    // is appended to the Saildocs query body, and Saildocs replies with
+    // "There was an error in the following command line: View the location...".
+    const msg = {
+      errors: [],
+      identityHash: "TEST_IDENTITY",
+      replyTo: "https://inreachlink.com/abc123",
+      channel: "inreach",
+      intent: "GRIB",
+      payload:
+        "send query@saildocs.com:gfs:20s,14s,155w,147w|2,2|12,24,36,48|wind\n\nView the location or send a reply to Bergiu...",
+    };
+
+    const { data } = await runScenario({ msg });
+    assert.ok(data, "should emit on OUTBOX");
+    assert.strictEqual(data.to, "query@saildocs.com");
+    assert.ok(
+      !data.body.includes("View the location"),
+      "InReach boilerplate must not leak into the Saildocs email body",
+    );
+    assert.ok(
+      !data.body.includes("Bergiu"),
+      "recipient name from the boilerplate must not leak into the body",
+    );
+    assert.ok(
+      data.body.includes("gfs:20s,14s,155w,147w|2,2|12,24,36,48|wind"),
+      "query should be preserved verbatim before the terminator",
+    );
+    assert.ok(
+      data.body.endsWith("\n-----"),
+      "body must end with the dash terminator (and nothing after it)",
     );
   });
 });

@@ -323,13 +323,16 @@
           Select a preset or customize your request. Larger requests may exceed 10 messages.
         </div>
         <div class="form-group">
-          <label for="weatherPreset">Presets:</label>
+          <label for="weatherPreset">Presets (centered on boat position):</label>
           <select id="weatherPreset" style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-color);">
             <option value="">-- Select preset --</option>
-            <option value="gfs:24n,34n,72w,60w|2,2|12,24,36,48|wind">Local wind forecast (4 timepoints)</option>
-            <option value="gfs:24n,34n,72w,60w|4,4|12,24,36,48|wind,press">Local wind + pressure (4 timepoints)</option>
-            <option value="ecmwf:44n,10n,75w,10w|8,8|12,48|wind,press">Atlantic crossing (2 timepoints)</option>
+            <option value="local-wind">Local wind forecast (4 timepoints)</option>
+            <option value="local-wind-pressure">Local wind + pressure (4 timepoints)</option>
+            <option value="extended">Extended forecast (2 timepoints, wide area)</option>
           </select>
+        </div>
+        <div id="weatherPosition" class="info" style="display: none;">
+          <strong>Boat position:</strong> <span id="weatherPositionText">—</span>
         </div>
         <div class="form-group">
           <label for="weatherRequest">Saildocs request:</label>
@@ -358,14 +361,14 @@
     <!-- Decode GRIB Tab -->
     <div id="decode" class="tab-content">
       <div class="card">
-        <h2>Reassemble GRIB from Messages</h2>
+        <h2>Reassemble Messages</h2>
         <div class="info">
-          Paste each received message below. The system will group them by post ID and verify integrity.
+          Paste each received message below. The system groups blog chunks by post ID and GRIB/weather chunks by transmission ID, then reassembles them.
         </div>
         <div class="form-group">
-          <label for="chunkInput">Add a chunk (one per line):</label>
+          <label for="chunkInput">Add a chunk (blog or GRIB message):</label>
           <div class="chunk-input">
-            <input type="text" id="chunkInput" placeholder="0805T0107a91f:LT$?F(D..">
+            <input type="text" id="chunkInput" placeholder="msg 1/3:grib:rabc123\n<base64>  OR  0805T0107a91f:LT$?...">
             <button id="addChunkBtn" type="button">Add Chunk</button>
           </div>
         </div>
@@ -389,6 +392,7 @@
     </div>
   </div>
 
+  <script src="saildocs-area.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

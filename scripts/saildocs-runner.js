@@ -186,59 +186,11 @@ let finished = false;
 // ---------------------------------------------------------------------------
 // 6. MIME / GRIB validation helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Extract a GRIB attachment from a raw MIME message buffer.
- *
- * Saildocs sends the GRIB file as a base64-encoded MIME attachment. This
- * function finds the attachment, decodes it, and checks for the "GRIB"
- * magic bytes (0x47 0x52 0x49 0x42) at the start of the decoded data.
- *
- * @param {Buffer} raw - Full RFC 5322 message source
- * @returns {{ data: Buffer } | null}
- */
-function extractGribFromMime(raw) {
-  if (!raw || !Buffer.isBuffer(raw)) return null;
-  const rawStr = raw.toString("latin1");
-
-  // Find MIME boundary (multipart/mixed or multipart/related)
-  const boundaryMatch = rawStr.match(/boundary\s*=\s*"?([^";\r\n]+)"?/i);
-  if (!boundaryMatch) {
-    // Not multipart — check if the single body is GRIB data.
-    const headerEnd = rawStr.indexOf("\r\n\r\n");
-    if (headerEnd < 0) return null;
-    const body = raw.subarray(headerEnd + 4);
-    if (body.subarray(0, 4).toString("ascii") === "GRIB") {
-      return { data: body };
-    }
-    return null;
-  }
-
-  const boundary = boundaryMatch[1];
-  const parts = rawStr.split(`--${boundary}`);
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (trimmed === "" || trimmed === "--") continue;
-
-    const encodingMatch = part.match(/Content-Transfer-Encoding:\s*base64/i);
-    if (!encodingMatch) continue;
-
-    const partHeaderEnd = part.indexOf("\r\n\r\n");
-    if (partHeaderEnd < 0) continue;
-
-    const b64Content = part.slice(partHeaderEnd + 4).replace(/[\r\n\s]/g, "");
-
-    try {
-      const decoded = Buffer.from(b64Content, "base64");
-      if (decoded.subarray(0, 4).toString("ascii") === "GRIB") {
-        return { data: decoded };
-      }
-    } catch {
-      // Not valid base64 — skip this part.
-    }
-  }
-  return null;
-}
+//
+// The GRIB-from-MIME extraction logic lives in lib/GribMime.js and is shared
+// with components/SaildocsMatcher.js (the production graph path) so the two
+// can't drift apart.
+const { extractGribFromMime } = require("../lib/GribMime.js");
 
 /**
  * Validate a Saildocs response email.

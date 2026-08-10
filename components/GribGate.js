@@ -30,10 +30,13 @@ class GribGate extends Component {
         },
         max_chunks: {
           datatype: "number",
-          description: "Maximum chunks before requiring consent (default: 10)",
+          description:
+            "Maximum chunks before requiring consent (default: 15). At the " +
+            "96-char chunk size this gates payloads over ~1KB of GRIB, matching " +
+            "the previous 10×140 threshold.",
           control: true,
           required: false,
-          default: 10,
+          default: 15,
         },
         dbpath: {
           datatype: "string",
@@ -56,7 +59,7 @@ class GribGate extends Component {
 
     this.db = null;
     this.dbPath = ":memory:";
-    this.maxChunks = 10;
+    this.maxChunks = 15;
     this.gateCounter = 0;
   }
 
@@ -88,22 +91,25 @@ class GribGate extends Component {
 
     const msg = input.getData("in");
 
-    // Check for failed messages
+    // GribGate has two non-error out ports (out, notify). A bare
+    // output.sendDone(msg) would throw "Port must be specified for sending
+    // output" (NoFlo requires a port map when there is >1 out port), which
+    // silently aborts the GRIB delivery. Always send via an explicit port map.
     if (failed(msg)) {
-      return output.sendDone(msg);
+      return output.sendDone({ out: msg });
     }
 
     // Get chunk array from message
     const chunks = msg.payload;
     if (!Array.isArray(chunks)) {
       fail(msg, new Error("GRIB payload must be an array of chunks"));
-      return output.sendDone(msg);
+      return output.sendDone({ out: msg });
     }
 
     // Check size against threshold
     if (chunks.length <= this.maxChunks) {
       // Small payload - pass through immediately
-      return output.sendDone(msg);
+      return output.sendDone({ out: msg });
     }
 
     // Large payload - gate it and request consent
@@ -134,9 +140,9 @@ class GribGate extends Component {
   }
 
   handleCommand(cmdMsg, output) {
-    // Check for failed messages
+    // See handle(): GribGate has >1 out port, so use an explicit port map.
     if (failed(cmdMsg)) {
-      return output.sendDone(cmdMsg);
+      return output.sendDone({ out: cmdMsg });
     }
 
     const payload =
@@ -147,7 +153,7 @@ class GribGate extends Component {
 
     if (!gateId) {
       fail(cmdMsg, new Error("Gate ID required for YES/CANCEL commands"));
-      return output.sendDone(cmdMsg);
+      return output.sendDone({ out: cmdMsg });
     }
 
     if (action === "YES") {
@@ -201,7 +207,7 @@ class GribGate extends Component {
       return output.sendDone({ notify: cancelMsg });
     } else {
       fail(cmdMsg, new Error(`Unknown command action: ${action}`));
-      return output.sendDone(cmdMsg);
+      return output.sendDone({ out: cmdMsg });
     }
   }
 

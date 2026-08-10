@@ -1,14 +1,19 @@
 const { Component, failed } = require("noflo-assembly");
 const DatabaseHelper = require("../lib/DbHelper");
+const { extractGribFromMime } = require("../lib/GribMime");
 
 /**
  * SaildocsMatcher - Receives inbound Saildocs emails and matches to pending requests
  *
  * Logic:
  * - Receives inbound Saildocs emails
- * - Extracts the binary attachment
+ * - Extracts the binary GRIB attachment (if any)
  * - Restores original user's identityHash, replyTo, and channel from SQLite based on subject line
- * - Passes the IP downstream
+ * - GRIB responses go on `direct` (→ GribChunker → delivery path)
+ * - Error responses (no attachment) go on `out` as NOTIFY text (→ delivery
+ *   path), so the user is told what went wrong instead of being silently
+ *   dropped
+ * - Both carry imapUid so the email is acked only after successful delivery
  */
 class SaildocsMatcher extends Component {
   constructor() {
@@ -67,9 +72,15 @@ class SaildocsMatcher extends Component {
 
     const email = input.getData("in");
 
-    // Check for failed messages
+    // Check for failed messages. SaildocsMatcher has three non-error out
+    // ports (direct, out, missed), so a bare sendDone would throw
+    // "Port must be specified for sending output". Route failed messages
+    // to `missed` (NOT `out`): a failed message was not successfully
+    // processed, so acking it (via `out` → ImapAcker) would silently drop
+    // it. For a driving-blind user it is safer to leave it unseen and retry
+    // than to lose it.
     if (failed(email)) {
-      return output.sendDone(email);
+      return output.sendDone({ missed: email });
     }
 
     try {
@@ -99,42 +110,67 @@ class SaildocsMatcher extends Component {
         return output.sendDone({ missed: email });
       }
 
-      // Extract binary attachment from email
-      const attachment = email.payload?.attachment || email.attachment;
+      // Extract the binary GRIB attachment. AuthVerifier carries the raw
+      // RFC 5322 message source through on `msg.raw` so we can parse the
+      // base64-encoded MIME attachment that isn't present in the decoded
+      // body text. Fall back to a pre-extracted `attachment` field for
+      // backward compatibility with the unit tests.
+      let attachment = null;
+      if (email.raw) {
+        const grib = extractGribFromMime(email.raw);
+        if (grib) {
+          attachment = grib.data;
+        }
+      }
       if (!attachment) {
-        // Saildocs response without attachment - treat as error
-        return output.sendDone({
-          missed: {
-            ...email,
-            errors: [
-              {
-                message: "Saildocs response missing binary attachment",
-              },
-            ],
-          },
-        });
+        attachment = email.payload?.attachment || email.attachment;
       }
 
-      // Build restored assembly message with original routing context
-      const result = {
+      // imapUid is carried on every result so ImapAcker (wired downstream
+      // of InReachSender) can mark the Saildocs response email as \Seen
+      // *after* the content has been delivered to the user. We ack on
+      // successful delivery, not at extraction — for a driving-blind user
+      // it is safer to re-fetch and retry than to ack early and silently
+      // lose the data if delivery fails.
+      const baseResult = {
         errors: [],
         identityHash: pending.identity_hash,
         replyTo: pending.reply_to,
-        channel: pending.channel, // RESTORED: this is the original requester's channel
-        intent: "SAILDOCS",
-        payload: attachment,
+        channel: pending.channel, // RESTORED: original requester's channel
+        imapUid: email.imapUid || null,
       };
 
-      // Clean up the pending entry
+      // Clean up the pending entry — the request has been answered.
       this.db.deletePendingSaildocs(pending.query_id);
 
-      // Must specify port: SaildocsMatcher has three non-error out ports
-      // (direct, out, missed). sendDone(result) without a port map throws
-      // "Port must be specified for sending output".
-      return output.sendDone({
-        direct: result,
-        out: result,
-      });
+      if (attachment) {
+        // GRIB response: route via `direct` only (→ GribChunker → Gate →
+        // ReplyDispatcher → InReachSender). Sending on `out` too would
+        // double-deliver the raw GRIB buffer alongside the chunked version.
+        const result = {
+          ...baseResult,
+          intent: "SAILDOCS",
+          payload: attachment,
+        };
+        return output.sendDone({ direct: result });
+      }
+
+      // No GRIB attachment — Saildocs replied with an error (e.g. "HTTP
+      // Protocol Exception: 405", "There was an error in the following
+      // command line: ..."). Forward the error text to the user via `out`
+      // (→ ReplyDispatcher → InReachSender), bypassing GribChunker (which
+      // is for binary GRIB only). The user is driving blind — an error
+      // message is far better than a silent drop, and this also prevents
+      // the response email from looping unseen forever on `missed`.
+      const errorText = String(email.payload || email.body || "").trim();
+      const truncated = errorText.substring(0, 150);
+      const errorResult = {
+        ...baseResult,
+        intent: "NOTIFY",
+        partType: "text",
+        payload: `Saildocs error: ${truncated}`,
+      };
+      return output.sendDone({ out: errorResult });
     } catch (err) {
       // On processing error, send to MISSED
       email.errors = email.errors || [];

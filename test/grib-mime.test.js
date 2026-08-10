@@ -1,18 +1,10 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-
-/**
- * Smoketests for the MIME / GRIB extraction logic.
- *
- * The extraction logic now lives in lib/GribMime.js and is shared between
- * scripts/saildocs-runner.js (the live E2E runner) and
- * components/SaildocsMatcher.js (the production graph path), so there is a
- * single source of truth. See test/grib-mime.test.js for the canonical
- * tests; this file exercises the same logic via the shared import as a
- * regression guard for the runner's historical behavior.
- */
 import { extractGribFromMime } from "../lib/GribMime.js";
 
+/**
+ * Build a minimal multipart MIME message with a GRIB attachment.
+ */
 function buildGribMime(gribPayload, opts = {}) {
   const boundary = opts.boundary || "----=_boundary";
   const gribB64 = Buffer.from(gribPayload).toString("base64");
@@ -41,7 +33,7 @@ function buildGribMime(gribPayload, opts = {}) {
   );
 }
 
-describe("Saildocs runner MIME/GRIB extraction", () => {
+describe("GribMime (shared GRIB attachment extraction)", () => {
   it("extracts a base64 GRIB attachment from a multipart MIME", () => {
     const gribPayload = Buffer.concat([
       Buffer.from("GRIB", "ascii"),

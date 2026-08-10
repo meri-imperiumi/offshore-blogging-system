@@ -81,8 +81,8 @@ describe("SaildocsMatcher", () => {
       },
     };
 
-    const { data } = await runScenario({ email, port: "out" });
-    assert.ok(data, "should emit on out port");
+    const { data } = await runScenario({ email, port: "direct" });
+    assert.ok(data, "should emit on direct port");
     assert.strictEqual(data.identityHash, "hash123");
     assert.strictEqual(data.replyTo, "captain@boat.sea");
     assert.strictEqual(data.channel, "winlink");
@@ -106,8 +106,8 @@ describe("SaildocsMatcher", () => {
       },
     };
 
-    const { data } = await runScenario({ email, port: "out" });
-    assert.ok(data, "should emit on out port via fallback");
+    const { data } = await runScenario({ email, port: "direct" });
+    assert.ok(data, "should emit on direct port via fallback");
     assert.strictEqual(data.identityHash, "hash456");
     assert.strictEqual(data.replyTo, "skipper@yacht.sea");
     assert.strictEqual(data.channel, "test");
@@ -131,24 +131,122 @@ describe("SaildocsMatcher", () => {
     assert.strictEqual(data.subject, "gfs:58n,60n,018e,022e");
   });
 
-  it("sends to missed port when response has no attachment", async () => {
-    db.savePendingSaildocs("abcdef", "hash", "user@sea", "test");
+  it("forwards error responses (no attachment) to the user on `out`", async () => {
+    // Saildocs error replies (e.g. "HTTP 405", "command error") have no
+    // GRIB attachment. Instead of dropping to `missed` (which would loop
+    // forever as an unseen email), forward the error text to the user as a
+    // NOTIFY message so they know their request failed. The pending entry
+    // IS cleaned up — the request has been answered (with an error).
+    db.savePendingSaildocs(
+      "abcdef",
+      "hash",
+      "https://inreachlink.com/x",
+      "inreach",
+    );
 
     const email = {
       subject: "Your query: abcdef",
       from: { address: "query-reply@saildocs.com" },
-      payload: {},
+      payload: "There was an error in the following command line: bad stuff",
+      imapUid: 907,
     };
 
-    const { data } = await runScenario({ email, port: "missed" });
-    assert.ok(data, "should emit on missed port for missing attachment");
+    const { data } = await runScenario({ email, port: "out" });
+    assert.ok(data, "should emit on out port for error response");
+    assert.strictEqual(data.identityHash, "hash");
+    assert.strictEqual(data.channel, "inreach");
+    assert.strictEqual(data.intent, "NOTIFY");
+    assert.strictEqual(data.partType, "text");
     assert.ok(
-      data.errors?.some((e) => e.message.includes("missing binary attachment")),
-      "should have missing attachment error",
+      String(data.payload).startsWith("Saildocs error:"),
+      "payload should be prefixed with 'Saildocs error:'",
+    );
+    assert.ok(
+      String(data.payload).includes("bad stuff"),
+      "error text should be included",
+    );
+    // imapUid must be carried so ImapAcker can mark the email as \Seen
+    // AFTER delivery to the InReach device succeeds.
+    assert.strictEqual(
+      data.imapUid,
+      907,
+      "should carry imapUid so the email can be acked after delivery",
     );
 
-    // Pending entry should NOT be cleaned up (it wasn't matched)
+    // Pending entry IS cleaned up — the request has been answered
     const remaining = db.getPendingSaildocs("abcdef");
-    assert.ok(remaining, "pending entry should still exist");
+    assert.ok(
+      !remaining,
+      "pending entry should be deleted (answered w/ error)",
+    );
+  });
+
+  it("extracts the GRIB attachment from raw MIME (production path)", async () => {
+    // In the production graph, AuthVerifier carries the raw RFC 5322
+    // message source through on `msg.raw` (the decoded body text doesn't
+    // contain the base64 attachment). SaildocsMatcher must extract the
+    // GRIB from `raw`, not from a pre-parsed `attachment` field.
+    db.savePendingSaildocs("raw123", "hash789", "captain@boat.sea", "inreach");
+
+    const gribPayload = Buffer.concat([
+      Buffer.from("GRIB", "ascii"),
+      Buffer.from([0x00, 0x01, 0x02, 0x03]),
+      Buffer.from("weather data"),
+    ]);
+    const gribB64 = gribPayload.toString("base64");
+    const boundary = "----=_prod";
+    const rawMime = Buffer.from(
+      [
+        `From: query-reply@saildocs.com`,
+        `Subject: gfs:58n,60n,018e,022e`,
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+        ``,
+        `--${boundary}`,
+        `Content-Type: text/plain`,
+        ``,
+        `Here is your GRIB file.`,
+        `--${boundary}`,
+        `Content-Type: application/octet-stream`,
+        `Content-Transfer-Encoding: base64`,
+        `Content-Disposition: attachment; filename="grib.grb"`,
+        ``,
+        `${gribB64}`,
+        `--${boundary}--`,
+        ``,
+      ].join("\r\n"),
+      "latin1",
+    );
+
+    const email = {
+      subject: "gfs:58n,60n,018e,022e",
+      from: { address: "query-reply@saildocs.com" },
+      payload: "Here is your GRIB file.",
+      raw: rawMime,
+      imapUid: 908,
+    };
+
+    const { data } = await runScenario({ email, port: "direct" });
+    assert.ok(data, "should emit on direct port");
+    assert.strictEqual(data.identityHash, "hash789");
+    assert.strictEqual(data.channel, "inreach");
+    assert.ok(
+      Buffer.isBuffer(data.payload),
+      "payload should be the GRIB buffer",
+    );
+    assert.strictEqual(
+      data.payload.subarray(0, 4).toString("ascii"),
+      "GRIB",
+      "extracted data should start with GRIB magic bytes",
+    );
+    assert.strictEqual(data.intent, "SAILDOCS");
+    // imapUid MUST be carried through so ImapAcker (wired downstream of
+    // InReachSender) can mark the Saildocs response email as \Seen AFTER
+    // delivery. Without it the response is never acked and gets re-fetched
+    // on every poll (the re-fetch loop).
+    assert.strictEqual(
+      data.imapUid,
+      908,
+      "should carry imapUid so the Saildocs response email can be acked",
+    );
   });
 });

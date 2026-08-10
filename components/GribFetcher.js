@@ -70,10 +70,25 @@ class GribFetcher extends Component {
     try {
       const payload = typeof msg.payload === "string" ? msg.payload.trim() : "";
 
-      // Parse Saildocs-style request
-      // Format: "send <email>:<query>"
-      if (payload.startsWith("send ")) {
-        return this.handleSaildocsRequest(msg, payload, output);
+      // InReach appends "View the location or send a reply..." boilerplate
+      // after the user's text. Use only the first non-empty line for BOTH
+      // the "send <email>:<query>" shorthand and the bare query; otherwise
+      // the boilerplate leaks into the Saildocs email body and Saildocs
+      // replies with "There was an error in the following command line:
+      // View the location...".
+      const firstLine =
+        payload.split(/\r?\n/).find((l) => l.trim() !== "") || "";
+
+      // Shorthand grammar: "send <email>:<query>" (explicit Saildocs address)
+      if (firstLine.startsWith("send ")) {
+        return this.handleSaildocsRequest(msg, firstLine, output);
+      }
+
+      // Bare Saildocs query: model:area|grid|hours|params
+      // This is what the web UI's preset selector generates and what a user
+      // sends from their InReach device.
+      if (this.isSaildocsQuery(firstLine)) {
+        return this.handleBareQuery(msg, firstLine, output);
       }
 
       // Try to fetch from local API
@@ -82,6 +97,26 @@ class GribFetcher extends Component {
       fail(msg, new Error(`GRIB fetch failed: ${err.message}`));
       return output.done();
     }
+  }
+
+  /**
+   * Check whether a line looks like a bare Saildocs weather query.
+   *
+   * Format: model:area|grid|hours|params
+   *   model  — letters (gfs, ecmwf, icon, ...)
+   *   area   — 4 comma-separated lat/lon values with n/s/e/w suffixes
+   *   grid   — 2 comma-separated numbers
+   *   hours  — comma-separated numbers
+   *   params — comma-separated words (wind, press, ...)
+   *
+   * Must have at least 3 pipe-delimited sections and a lat/lon token.
+   */
+  isSaildocsQuery(line) {
+    if (!/^[a-z]+:/i.test(line)) return false;
+    const pipes = (line.match(/\|/g) || []).length;
+    if (pipes < 3) return false;
+    if (!/[0-9][nsew]/i.test(line)) return false;
+    return true;
   }
 
   handleSaildocsRequest(msg, payload, output) {
@@ -96,7 +131,22 @@ class GribFetcher extends Component {
     }
     const email = rest.substring(0, colonIdx);
     const query = rest.substring(colonIdx + 1);
+    return this.sendSaildocsRequest(msg, query, email, output);
+  }
 
+  /**
+   * Handle a bare Saildocs query (no "send" prefix, no explicit email).
+   * Defaults to query@saildocs.com.
+   */
+  handleBareQuery(msg, query, output) {
+    return this.sendSaildocsRequest(msg, query, "query@saildocs.com", output);
+  }
+
+  /**
+   * Shared Saildocs request builder: save the pending mapping, build the
+   * outbound email, and emit on OUTBOX.
+   */
+  sendSaildocsRequest(msg, query, email, output) {
     // Generate unique query ID
     const queryId = crypto.randomBytes(8).toString("hex");
 
@@ -124,6 +174,12 @@ class GribFetcher extends Component {
       text: terminatedBody,
       // Mark as Saildocs outbound (not a reply to sender)
       isOutboundRequest: true,
+      // Carry the original email's imapUid so that ImapAcker (wired after
+      // SmtpResponder in the graph) can mark the incoming InReach/Winalert
+      // request email as \Seen once the Saildocs request has been sent.
+      // Without this the request email stays unseen and is re-fetched on
+      // every poll, sending duplicate Saildocs requests.
+      imapUid: msg.imapUid,
     };
 
     return output.sendDone({ outbox: outboundMsg });

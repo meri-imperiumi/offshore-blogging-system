@@ -80,4 +80,27 @@ describe("cloud-server.fbp", () => {
     );
     assert.ok(decoderToPublisher, "BlogDecoder should feed GitPublisher");
   });
+
+  it("acks InReach request emails only after the SMTP send to Saildocs succeeds", () => {
+    // The GRIB request email must be marked \Seen only after SmtpResponder
+    // successfully sends the request to Saildocs (SmtpResponder OUT →
+    // ImapAcker). If SMTP fails, the email stays unseen and is retried on
+    // the next poll — for a driving-blind user it is safer to send the
+    // request twice than to ack early and silently lose it.
+    assert.ok(graph);
+    const smtpToAcker = graph.edges.some(
+      (e) => e.from.node === "SmtpResponder" && e.to.node === "ImapAcker",
+    );
+    assert.ok(
+      smtpToAcker,
+      "SmtpResponder OUT should feed ImapAcker (ack after successful SMTP send)",
+    );
+    const fetcherToAcker = graph.edges.some(
+      (e) => e.from.node === "GribFetcher" && e.to.node === "ImapAcker",
+    );
+    assert.ok(
+      !fetcherToAcker,
+      "GribFetcher OUTBOX must NOT feed ImapAcker (don't ack at queue time)",
+    );
+  });
 });

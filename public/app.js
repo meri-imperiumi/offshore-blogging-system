@@ -102,11 +102,29 @@ class OffshoreBloggingUI {
   }
 
   initWeatherTab() {
-    document.getElementById("weatherPreset").addEventListener("change", (e) => {
-      if (e.target.value) {
-        document.getElementById("weatherRequest").value = e.target.value;
-      }
-    });
+    document
+      .getElementById("weatherPreset")
+      .addEventListener("change", async (e) => {
+        const presetId = e.target.value;
+        if (!presetId) return;
+
+        const pos = await this.getBoatPosition();
+        if (!pos) {
+          this.showPositionError(
+            "Unable to read boat position from Signal K. " +
+              "Enter the Saildocs request manually.",
+          );
+          return;
+        }
+
+        const request = window.SaildocsArea.buildRequest(
+          presetId,
+          pos.lat,
+          pos.lon,
+        );
+        document.getElementById("weatherRequest").value = request;
+        this.showPosition(pos);
+      });
 
     document
       .getElementById("weatherBtn")
@@ -272,6 +290,22 @@ class OffshoreBloggingUI {
 
   escapeForAttribute(str) {
     return str.replace(/'/g, "\\'").replace(/\\/g, "\\\\");
+  }
+
+  /**
+   * Build the InReach message the user sends to the cloud for a weather
+   * request. Pure (no DOM) so it's testable in a vm sandbox.
+   *
+   * Wraps a bare Saildocs query as `send query@saildocs.com:<query>` so the
+   * message is a complete, self-documenting command (matching cloud.md
+   * §GribFetcher and the runner example). Leaves an explicit `send ...`
+   * command unchanged so the user can override the Saildocs address.
+   */
+  static buildWeatherMessage(request) {
+    if (/^send\s/i.test(request)) {
+      return request;
+    }
+    return `send query@saildocs.com:${request}`;
   }
 
   showEncodeResults(data, previewData) {
@@ -525,6 +559,60 @@ class OffshoreBloggingUI {
     return ok;
   }
 
+  /**
+   * Fetch the boat's current position from the Signal K REST API.
+   * Caches the result so switching between presets doesn't re-fetch.
+   * Returns { lat, lon } or null on error / no fix.
+   */
+  async getBoatPosition() {
+    if (this.cachedPosition) return this.cachedPosition;
+    try {
+      const response = await fetch(
+        "/signalk/v1/api/vessels/self/navigation/position",
+      );
+      if (!response.ok) return null;
+      const data = await response.json();
+      // Handle both wrapped { value: { latitude, longitude } } and
+      // direct { latitude, longitude } response shapes.
+      const pos = data.value || data;
+      if (
+        typeof pos.latitude !== "number" ||
+        typeof pos.longitude !== "number"
+      ) {
+        return null;
+      }
+      this.cachedPosition = { lat: pos.latitude, lon: pos.longitude };
+      return this.cachedPosition;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Show the boat position used for the weather request.
+   */
+  showPosition(pos) {
+    const el = document.getElementById("weatherPosition");
+    if (!el) return;
+    el.style.display = "block";
+    el.className = "info";
+    const latDir = pos.lat >= 0 ? "N" : "S";
+    const lonDir = pos.lon >= 0 ? "E" : "W";
+    document.getElementById("weatherPositionText").textContent =
+      `${Math.abs(pos.lat).toFixed(4)}°${latDir}, ${Math.abs(pos.lon).toFixed(4)}°${lonDir}`;
+  }
+
+  /**
+   * Show an error message in the position display area.
+   */
+  showPositionError(message) {
+    const el = document.getElementById("weatherPosition");
+    if (!el) return;
+    el.style.display = "block";
+    el.className = "error";
+    document.getElementById("weatherPositionText").textContent = message;
+  }
+
   async generateWeatherRequest() {
     const request = document.getElementById("weatherRequest").value.trim();
 
@@ -533,13 +621,23 @@ class OffshoreBloggingUI {
       return;
     }
 
+    // Build the message the user sends from InReach to the cloud. The
+    // cloud's GribFetcher understands two forms:
+    //   send <email>:<query>   (explicit Saildocs address)
+    //   <bare query>           (defaults to query@saildocs.com)
+    // We emit the explicit `send` form so the message is self-documenting
+    // and unambiguous about where it's going — matching the runner example
+    // and cloud.md §GribFetcher. (buildWeatherMessage avoids double-wrapping
+    // if the user already typed a `send ...` command.)
+    const message = OffshoreBloggingUI.buildWeatherMessage(request);
+
     // Parse the request to estimate message count
     const parts = request.split("|");
     const model = parts[0].split(":")[0];
     const _timepoints = parts[2] ? parts[2].split(",").length : 1;
 
     // Simple estimation: each message ~120 chars, weather requests vary
-    const estimatedMsgs = Math.ceil(request.length / 120);
+    const estimatedMsgs = Math.ceil(message.length / 120);
 
     document.getElementById("weatherResults").style.display = "block";
     document.getElementById("weatherMessages").textContent = estimatedMsgs;
@@ -552,8 +650,8 @@ class OffshoreBloggingUI {
         <p>Copy the following message and send via InReach to your cloud server:</p>
       </div>
       <div class="message-item">
-        <div class="message-content">${this.escapeHtml(request)}</div>
-        <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(request)}', this)">Copy</button>
+        <div class="message-content">${this.escapeHtml(message)}</div>
+        <button class="copy-btn" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(message)}', this)">Copy</button>
       </div>
       ${
         estimatedMsgs > 10
@@ -574,27 +672,50 @@ class OffshoreBloggingUI {
 
     if (!chunk) return;
 
-    // Validate chunk format
-    const match = chunk.match(
+    // Try blog format: <postid:4><type:1[TI]><idx:2><total:2><crc:4>:<data>
+    const blogMatch = chunk.match(
       /^([0-9A-Za-z]{4})([TI])(\d{2})(\d{2})([0-9a-f]{4}):(.*)$/,
     );
-    if (!match) {
+
+    // Try lo-fi format: msg <idx>/<total>:<partType>:<transmissionId>\n<data>
+    // (used by InReachSender for multi-chunk GRIB and text deliveries).
+    // The header and data are separated by a newline; we match the header
+    // prefix and take the rest as data so we don't care whether the paste
+    // preserved the \n or replaced it with a space.
+    const lofiMatch = chunk.match(/^msg\s+(\d+)\/(\d+):(\w+):(\w+)\s*/);
+
+    if (blogMatch) {
+      const [, postid, type, idx, total, crc, data] = blogMatch;
+      this.chunks.push({
+        format: "blog",
+        postid,
+        type,
+        idx: parseInt(idx, 10),
+        total: parseInt(total, 10),
+        crc,
+        data,
+        raw: chunk,
+      });
+    } else if (lofiMatch) {
+      const [, idx, total, partType, transmissionId] = lofiMatch;
+      const data = chunk.substring(lofiMatch[0].length).trim();
+      this.chunks.push({
+        format: "lofi",
+        partType,
+        transmissionId,
+        idx: parseInt(idx, 10),
+        total: parseInt(total, 10),
+        data,
+        raw: chunk,
+      });
+    } else {
       alert(
-        "Invalid chunk format. Expected: <postid:4><type:1><idx:2><total:2><crc:4>:<base64 data>",
+        "Unrecognized chunk format.\n\n" +
+          "Blog:  <postid:4><type:1><idx:2><total:2><crc:4>:<data>\n" +
+          "Lo-fi: msg <idx>/<total>:<partType>:<id>\\n<data>",
       );
       return;
     }
-
-    const [, postid, type, idx, total, crc, data] = match;
-    this.chunks.push({
-      postid,
-      type,
-      idx: parseInt(idx, 10),
-      total: parseInt(total, 10),
-      crc,
-      data,
-      raw: chunk,
-    });
 
     input.value = "";
     this.renderChunks();
@@ -611,18 +732,39 @@ class OffshoreBloggingUI {
 
     container.style.display = "block";
 
-    // Group by postid and type
-    const groups = {};
+    // Group blog chunks by postid-type, lo-fi chunks by transmissionId
+    const blogGroups = {};
+    const lofiGroups = {};
     this.chunks.forEach((chunk) => {
-      const key = `${chunk.postid}-${chunk.type}`;
-      if (!groups[key]) {
-        groups[key] = { postid: chunk.postid, type: chunk.type, chunks: {} };
+      if (chunk.format === "lofi") {
+        const key = chunk.transmissionId;
+        if (!lofiGroups[key]) {
+          lofiGroups[key] = {
+            transmissionId: chunk.transmissionId,
+            partType: chunk.partType,
+            total: chunk.total,
+            chunks: {},
+          };
+        }
+        lofiGroups[key].chunks[chunk.idx] = chunk;
+        return;
       }
-      groups[key].chunks[chunk.idx] = chunk;
+      // Blog format (default for backward compat)
+      const key = `${chunk.postid}-${chunk.type}`;
+      if (!blogGroups[key]) {
+        blogGroups[key] = {
+          postid: chunk.postid,
+          type: chunk.type,
+          chunks: {},
+        };
+      }
+      blogGroups[key].chunks[chunk.idx] = chunk;
     });
 
     let html = "";
-    for (const [_key, group] of Object.entries(groups)) {
+
+    // Render blog groups
+    for (const [_key, group] of Object.entries(blogGroups)) {
       const chunkIds = Object.keys(group.chunks)
         .map(Number)
         .sort((a, b) => a - b);
@@ -644,6 +786,30 @@ class OffshoreBloggingUI {
       `;
     }
 
+    // Render lo-fi groups (GRIB, etc.)
+    for (const group of Object.values(lofiGroups)) {
+      const chunkIds = Object.keys(group.chunks)
+        .map(Number)
+        .sort((a, b) => a - b);
+      const total = group.total;
+      const missing = [];
+      for (let i = 1; i <= total; i++) {
+        if (!group.chunks[i]) missing.push(i);
+      }
+      const typeLabel =
+        group.partType === "grib"
+          ? "GRIB"
+          : group.partType.charAt(0).toUpperCase() + group.partType.slice(1);
+      const statusClass = missing.length === 0 ? "success" : "info";
+
+      html += `
+        <div class="${statusClass}" style="margin-bottom: 10px;">
+          <strong>${typeLabel} (${group.transmissionId}):</strong> ${chunkIds.length}/${total} chunks
+          ${missing.length > 0 ? `<br>Missing: ${missing.join(", ")}` : "<br>✓ Complete"}
+        </div>
+      `;
+    }
+
     display.innerHTML = html;
   }
 
@@ -653,14 +819,33 @@ class OffshoreBloggingUI {
       return;
     }
 
-    // Group by postid and type
-    const groups = {};
+    // Group blog chunks by postid-type, lo-fi chunks by transmissionId
+    const blogGroups = {};
+    const lofiGroups = {};
     this.chunks.forEach((chunk) => {
-      const key = `${chunk.postid}-${chunk.type}`;
-      if (!groups[key]) {
-        groups[key] = { postid: chunk.postid, type: chunk.type, entries: {} };
+      if (chunk.format === "lofi") {
+        const key = chunk.transmissionId;
+        if (!lofiGroups[key]) {
+          lofiGroups[key] = {
+            transmissionId: chunk.transmissionId,
+            partType: chunk.partType,
+            total: chunk.total,
+            entries: {},
+          };
+        }
+        lofiGroups[key].entries[chunk.idx] = chunk.data;
+        return;
       }
-      groups[key].entries[chunk.idx] = {
+      // Blog format (default for backward compat)
+      const key = `${chunk.postid}-${chunk.type}`;
+      if (!blogGroups[key]) {
+        blogGroups[key] = {
+          postid: chunk.postid,
+          type: chunk.type,
+          entries: {},
+        };
+      }
+      blogGroups[key].entries[chunk.idx] = {
         total: chunk.total,
         crc: chunk.crc,
         data: chunk.data,
@@ -673,7 +858,8 @@ class OffshoreBloggingUI {
 
     let html = "";
 
-    for (const [_key, group] of Object.entries(groups)) {
+    // Reassemble blog chunks (server-side: dictionary decompression)
+    for (const [_key, group] of Object.entries(blogGroups)) {
       try {
         const response = await fetch(
           "/plugins/signalk-offshore-blogging/api/reassemble",
@@ -714,6 +900,97 @@ class OffshoreBloggingUI {
         html += `
           <div class="error">
             <h4>Post ${group.postid} (${group.type === "T" ? "Text" : "Image"})</h4>
+            <p>${this.escapeHtml(error.message)}</p>
+          </div>
+        `;
+      }
+    }
+
+    // Reassemble lo-fi chunks (client-side: base64 concat → binary → download)
+    //
+    // GRIB chunks are plain base64 slices of the original binary. No
+    // compression or dictionary is involved, so reassembly is just
+    // concatenation + atob. This runs entirely in the browser — no server
+    // round-trip, works offline.
+    for (const group of Object.values(lofiGroups)) {
+      const total = group.total;
+
+      // Check for missing chunks
+      const missing = [];
+      for (let i = 1; i <= total; i++) {
+        if (!group.entries[i]) missing.push(i);
+      }
+
+      if (missing.length > 0) {
+        const label =
+          group.partType === "grib"
+            ? "GRIB"
+            : group.partType.charAt(0).toUpperCase() + group.partType.slice(1);
+        html += `
+          <div class="error">
+            <h4>${label} (${group.transmissionId})</h4>
+            <p>Missing chunks: ${missing.join(", ")}</p>
+          </div>
+        `;
+        continue;
+      }
+
+      try {
+        // Concatenate base64 chunks in order (1-based). Strip ALL
+        // whitespace first: InReach devices wrap long lines, and when the
+        // user copies/retypes the chunks, embedded newlines and spaces can
+        // survive into the pasted data. `atob` throws "string contains
+        // invalid character" on any whitespace, so we must scrub it.
+        let base64Data = "";
+        for (let i = 1; i <= total; i++) {
+          base64Data += group.entries[i];
+        }
+        base64Data = base64Data.replace(/\s+/g, "");
+
+        // Decode base64 → binary
+        const binary = atob(base64Data);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+
+        if (group.partType === "grib") {
+          // Create a downloadable .grb file
+          const blob = new Blob([bytes], { type: "application/octet-stream" });
+          const url = URL.createObjectURL(blob);
+          const magic =
+            bytes.length >= 4
+              ? String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3])
+              : "";
+          const magicOk = magic === "GRIB";
+          html += `
+            <div class="success">
+              <h4>GRIB (${group.transmissionId})</h4>
+              <p><strong>Size:</strong> ${bytes.length} bytes</p>
+              <p><strong>Magic:</strong> ${this.escapeHtml(magic)} ${magicOk ? "✓" : "⚠ expected GRIB"}</p>
+              <a href="${url}" download="${group.transmissionId}.grb" class="btn">Download .grb</a>
+            </div>
+          `;
+        } else {
+          // Generic text delivery (single-chunk notifications arrive
+          // headerless and don't go through this path, but multi-chunk
+          // text is possible)
+          const text = new TextDecoder().decode(bytes);
+          html += `
+            <div class="success">
+              <h4>${group.partType} (${group.transmissionId})</h4>
+              <textarea class="code-block" readonly>${this.escapeHtml(text)}</textarea>
+            </div>
+          `;
+        }
+      } catch (error) {
+        const label =
+          group.partType === "grib"
+            ? "GRIB"
+            : group.partType.charAt(0).toUpperCase() + group.partType.slice(1);
+        html += `
+          <div class="error">
+            <h4>${label} (${group.transmissionId})</h4>
             <p>${this.escapeHtml(error.message)}</p>
           </div>
         `;

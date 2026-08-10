@@ -44,12 +44,22 @@ GribAuth OUT -> IN GribFetcher(GribFetcher)
 GribFetcher DIRECT -> IN GribChunker(GribChunker)
 # GribFetcher OUTBOX goes to SMTP regardless of channel (new outbound request to Saildocs)
 GribFetcher OUTBOX -> IN SmtpResponder(SmtpResponder)
+# Ack the original InReach/Winalert request email only AFTER the SMTP send
+# to Saildocs succeeds (SmtpResponder OUT → ImapAcker). If SMTP fails, the
+# email stays unseen and is re-fetched on the next poll, retrying the
+# request. For a driving-blind user it is safer to send twice than to ack
+# early and silently lose the request when SMTP fails.
+SmtpResponder OUT -> IN ImapAcker(ImapAcker)
 
 # 6. Third-Party Bridge (Saildocs Ingestion)
 Router OUT[2] -> IN SaildocsMatcher(SaildocsMatcher)
-# Direct path for GRIB processing (Gate, chunking, etc.)
+# GRIB responses go via DIRECT (→ GribChunker → Gate → delivery). Sending
+# on OUT too would double-deliver the raw GRIB buffer alongside the chunks.
 SaildocsMatcher DIRECT -> IN GribChunker(GribChunker)
-# Reply path via ReplyDispatcher (marks as seen after processing)
+# Error responses (no GRIB attachment — e.g. Saildocs "HTTP 405" /
+# "command error" replies) go via OUT as NOTIFY text straight to the user,
+# bypassing GribChunker. The user is driving blind — an error message is
+# better than a silent drop, and it prevents the email from looping unseen.
 SaildocsMatcher OUT -> IN ReplyDispatcher(ReplyDispatcher)
 ReplyDispatcher SMTP -> IN ImapAcker(ImapAcker)
 ReplyDispatcher INREACH -> IN ImapAcker(ImapAcker)
