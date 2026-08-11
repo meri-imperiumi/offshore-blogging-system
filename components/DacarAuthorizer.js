@@ -1,20 +1,125 @@
 const { Component, failed, fail } = require("noflo-assembly");
-const DatabaseHelper = require("../lib/DbHelper");
+const { execFile } = require("node:child_process");
 
 /**
- * DacarAuthorizer - Authorization using Dacar tuple capability store
+ * DacarAuthorizer - Authorization via the `dacar` CLI's local file store.
  *
- * Logic:
- * - Reads the requested permission from the PERMISSION inport
- * - Evaluates msg.identityHash against the local Dacar tuple capability store
- * - Purges expired tuples and checks against tombstones
- * - If valid, passes the IP unchanged (including msg.channel)
- * - If denied, invokes fail(msg), mutates to a NOTIFY intent, emits to DENIED
+ * The cloud does NOT own Dacar state. An operator bootstraps and later syncs
+ * it out-of-band using the `dacar` CLI:
+ *
+ *   dacar init                          # creates the store + root trust anchor
+ *   dacar grant <grantee> execute blog:publish
+ *   dacar sync                          # converge with other nodes over RNS
+ *
+ * The store path is read from the `STORE` inport, fed by a `core/ReadEnv`
+ * node reading `$DACAR_HOME` (default `~/.dacar`) — the SAME env var and
+ * default the `dacar` CLI itself uses, so the operator's `dacar grant` and
+ * the cloud's `dacar check` can never disagree. When no `STORE` IIP arrives
+ * (env var unset), `--store` is omitted entirely and the CLI resolves its own
+ * default, so the component carries no store-path knowledge of its own.
+ *
+ * Each authorization is evaluated by shelling out to
+ * `dacar check <grantee> execute <permission>`, so the CLI is the single
+ * reader of its own store: the cloud can never drift from the grant format the
+ * CLI writes, and a `dacar grant` / `dacar sync` made after the server started
+ * is picked up on the very next message (no restart, no cache to invalidate).
+ *
+ * `dacar check` exit codes: 0 = ALLOW, 1 = DENY. Anything else (binary
+ * missing, store uninitialized, timeout) is an infrastructure failure: the
+ * component fails CLOSED (deny) but surfaces the cause to the operator log so
+ * a fixable misconfiguration is not hidden behind a generic "not authorized".
+ *
+ * Why shell out rather than load the store in-process? It avoids coupling the
+ * cloud to @reticulum/dacar's internal JS API (Engine/DacarStore), needs no
+ * extra dependency, and keeps one code path that understands Dacar state. The
+ * exit-code contract is the CLI's stable public interface; the JS API is
+ * still pre-1.0.
+ *
+ * The `dacar` binary is located via `$DACAR_BIN` (default: lookup on PATH).
+ * Unlike the store path, the binary location is an infrastructure/PATH
+ * concern rather than authorization state, so it stays env-only.
  */
+
+/**
+ * Default `runCheck`: shells out to `dacar check`.
+ *
+ * Resolves to `{ allowed: boolean }`. Rejects on infrastructure failure
+ * (binary missing, non-{0,1} exit, timeout) so the component can fail closed
+ * with an actionable error rather than a silent misclassification.
+ *
+ * @param {string} grantee Identity hash (hex) of the requester.
+ * @param {string} permission Permission/object to check, e.g. `blog:publish`.
+ * @param {string} [store] Optional store path; when given, passed as
+ *   `--store <path>`. When omitted, the `dacar` CLI resolves its own default
+ *   (`$DACAR_HOME || ~/.dacar`) — the same resolution the operator's
+ *   `dacar grant` uses.
+ * @returns {Promise<{ allowed: boolean }>}
+ */
+async function runCheck(grantee, permission, store) {
+  const bin = process.env.DACAR_BIN || "dacar";
+  const args = ["check"];
+  if (store) {
+    args.push("--store", store);
+  }
+  args.push(String(grantee), "execute", permission);
+  return new Promise((resolve, reject) => {
+    execFile(
+      bin,
+      args,
+      { timeout: 15000, maxBuffer: 1 << 20 },
+      (err, _stdout, stderr) => {
+        if (err) {
+          const stderrText = String(stderr || "").trim();
+          // `dacar check` exits 1 for a clean DENY — that is its documented
+          // contract, not an error. Distinguish it from a fatal exit-1
+          // (e.g. an uninitialized store throws inside cmdCheck and the CLI's
+          // top-level catch also exits 1): a clean DENY prints the "✘ DENY"
+          // marker (or nothing) to stderr, whereas a fatal prints
+          // "fatal:" / "error:". Absent the DENY marker, treat exit-1 as an
+          // infrastructure failure so the operator sees the real cause.
+          if (err.code === 1) {
+            if (stderrText === "" || /DENY/i.test(stderrText)) {
+              return resolve({ allowed: false });
+            }
+            return reject(
+              new Error(`dacar check failed: ${stderrText || err.message}`),
+            );
+          }
+          if (err.code === "ENOENT") {
+            return reject(
+              new Error(
+                `dacar CLI not found at '${bin}' ` +
+                  "(install @reticulum/dacar or set DACAR_BIN)",
+              ),
+            );
+          }
+          if (err.signal) {
+            return reject(
+              new Error(`dacar check killed by signal ${err.signal}`),
+            );
+          }
+          return reject(
+            new Error(
+              `dacar check exited ${err.code}: ${stderrText || err.message}`,
+            ),
+          );
+        }
+        resolve({ allowed: true });
+      },
+    );
+  });
+}
+
+// Injectable seam: production shells out; tests substitute a fake checker
+// without touching the filesystem or requiring the `dacar` binary on PATH.
+const di = { runCheck };
+
 class DacarAuthorizer extends Component {
   constructor() {
     super({
-      description: "Authorization using Dacar tuple capability store",
+      description:
+        "Authorization via the dacar CLI file store " +
+        "(operator bootstraps/syncs with `dacar init` / `dacar grant` / `dacar sync`)",
       inPorts: {
         in: {
           datatype: "object",
@@ -26,17 +131,18 @@ class DacarAuthorizer extends Component {
           control: true,
           required: true,
         },
-        dbpath: {
+        store: {
           datatype: "string",
-          description: "Database path (default: :memory:)",
+          description:
+            "Optional dacar store path (defaults to $DACAR_HOME || ~/.dacar " +
+            "via the dacar CLI itself when unset). Fed by a core/ReadEnv node.",
           control: true,
-          required: false,
         },
       },
       outPorts: {
         out: {
           datatype: "object",
-          description: "Authorized assembly message",
+          description: "Authorized assembly message (channel preserved)",
         },
         denied: {
           datatype: "object",
@@ -44,79 +150,68 @@ class DacarAuthorizer extends Component {
         },
       },
     });
-
-    this.db = null;
-    this.dbPath = ":memory:";
     this.currentPermission = null;
+    this.currentStore = null;
+    this.di = di;
   }
 
   handle(input, output) {
-    // Process control ports
-    if (input.hasData("dbpath")) {
-      this.dbPath = input.getData("dbpath");
-    }
     if (input.hasData("permission")) {
       this.currentPermission = input.getData("permission");
     }
+    if (input.hasData("store")) {
+      this.currentStore = input.getData("store");
+    }
 
-    // Wait for IN port
     if (!input.hasData("in")) {
-      return null;
+      return;
     }
 
     const msg = input.getData("in");
 
-    // Check for failed messages
+    // Failed assemblies (auth, reassembly, …) bypass authorization and go
+    // straight to the denied channel so the sender is told why.
     if (failed(msg)) {
       return output.sendDone({ denied: msg });
     }
 
-    // Initialize database if needed
-    if (!this.db) {
-      this.db = new DatabaseHelper(this.dbPath);
-      this.db.initialize();
-    }
-
-    // If no permission configured, deny
     if (!this.currentPermission) {
       return this.deny(msg, "No permission configured", output);
     }
 
-    // Purge expired tuples and tombstones
-    this.db.purgeExpiredDacarTuples();
-    this.db.purgeExpiredDacarTombstones();
+    // Fire-and-forget the async check; authorize() owns the output lifecycle.
+    // The sync handle must not be async — NoFlo treats a returned Promise as
+    // an implicit sendDone() (see component-basics.md "Async/Await Trap").
+    this.authorize(msg, output);
+  }
 
+  async authorize(msg, output) {
+    const grantee = msg.identityHash;
+    if (!grantee) {
+      return this.deny(msg, "No identity hash on message", output);
+    }
     try {
-      // Check if identity is blocked by a tombstone
-      const tombstone = this.db.getDacarTombstone(
-        msg.identityHash,
+      const { allowed } = await this.di.runCheck(
+        grantee,
         this.currentPermission,
-        "execute",
+        this.currentStore,
       );
-      if (tombstone) {
-        return this.deny(msg, "Access revoked", output);
-      }
-
-      // Check for valid tuple
-      const tuples = this.db.getDacarTuples(
-        msg.identityHash,
-        this.currentPermission,
-        "execute",
-      );
-
-      if (tuples && tuples.length > 0) {
-        // Valid tuple found - allow access
+      if (allowed) {
+        // Allow: pass the IP through unchanged (incl. msg.channel) so
+        // ReplyDispatcher can route the eventual reply correctly.
         return output.sendDone({ out: msg });
       }
-
-      // No valid tuple - deny access
       return this.deny(
         msg,
         `Not authorized for ${this.currentPermission}`,
         output,
       );
     } catch (err) {
-      // On database error, deny for safety
+      // Infrastructure failure (binary missing, store uninitialized, timeout).
+      // Fail CLOSED — a silent allow here would be a security hole — but log
+      // the cause so a fixable misconfiguration isn't hidden behind a generic
+      // "not authorized" reply to the (driving-blind) sender.
+      console.error(`[DacarAuthorizer] ${err.message}`);
       return this.deny(msg, `Authorization error: ${err.message}`, output);
     }
   }
@@ -129,11 +224,9 @@ class DacarAuthorizer extends Component {
   }
 
   shutdown() {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-    }
+    // No long-lived resources: each check spawns a short-lived subprocess.
   }
 }
 
 exports.getComponent = () => new DacarAuthorizer();
+exports.di = di;

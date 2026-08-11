@@ -11,6 +11,14 @@
 #   INREACH_REPLY_ADDRESS                 cloud address shown to InReach recipients
 #   ALERT_ADDRESS                         operator address for unrecoverable alerts
 #   LOG_PATH                              ErrorLogger log file
+#   DACAR_HOME                            dacar CLI store path (default ~/.dacar);
+#                                        read via a core/ReadEnv node (DacarEnv)
+#                                        and fed to DacarAuthorizer's STORE inport.
+#                                        Unset → the `dacar` CLI resolves its own
+#                                        default (same path the operator's
+#                                        `dacar grant` uses).
+#
+# Provider identity (mailbox.org) is fixed by SPEC.md and wired as literals.
 #
 # Provider identity (mailbox.org) is fixed by SPEC.md and wired as literals.
 # Timer intervals: PollTimer 60s, NackTimer 15m.
@@ -31,10 +39,13 @@ SmtpUserEnv OUT -> SMTP_USER SmtpResponder
 SmtpPassEnv OUT -> SMTP_PASS SmtpResponder
 
 'CLOUD_DB_PATH' -> KEY DbEnv(core/ReadEnv)
+# DacarAuthorizer instances (BlogAuth, GribAuth, SysAuth) do NOT take a
+# dbpath: they evaluate via the `dacar` CLI against the file store at
+# $DACAR_HOME (default ~/.dacar), the same store the operator manages with
+# `dacar init`/`dacar grant`/`dacar sync`. The store path flows in on the
+# `STORE` inport from the DacarEnv ReadEnv node above; a grant made after the
+# server started is picked up on the next message — no restart needed.
 DbEnv OUT -> DBPATH Verifier
-DbEnv OUT -> DBPATH BlogAuth
-DbEnv OUT -> DBPATH GribAuth
-DbEnv OUT -> DBPATH SysAuth
 DbEnv OUT -> DBPATH GribFetcher
 DbEnv OUT -> DBPATH Gate
 DbEnv OUT -> DBPATH Reassembler
@@ -56,6 +67,16 @@ AlertEnv OUT -> ALERTADDRESS AlertComposer
 
 'LOG_PATH' -> KEY LogEnv(core/ReadEnv)
 LogEnv OUT -> LOGPATH ErrorLogger
+
+# Dacar authorization store path. Read via core/ReadEnv (same idiom as
+# CLOUD_DB_PATH / REPO_PATH) so the graph carries no hidden env reads. When
+# DACAR_HOME is unset, ReadEnv sends nothing on OUT and DacarAuthorizer omits
+# `--store`, letting the `dacar` CLI resolve its own default (~/.dacar) —
+# the same resolution the operator's `dacar grant` uses, so they can't diverge.
+'DACAR_HOME' -> KEY DacarEnv(core/ReadEnv)
+DacarEnv OUT -> STORE BlogAuth
+DacarEnv OUT -> STORE GribAuth
+DacarEnv OUT -> STORE SysAuth
 
 # 1. IMAP Ingestion & Authentication
 # PollTimer drives a one-shot fetch cycle (open, fetch unseen, close) every

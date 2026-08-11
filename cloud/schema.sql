@@ -50,29 +50,11 @@ CREATE TABLE IF NOT EXISTS metrics (
 INSERT OR IGNORE INTO metrics (id, blog_posts, msg_in, msg_out, updated_at)
 VALUES (1, 0, 0, 0, strftime('%s', 'now'));
 
--- Dacar authorization tuples
-CREATE TABLE IF NOT EXISTS dacar_tuples (
-  issuer TEXT NOT NULL,
-  subject TEXT NOT NULL,
-  object TEXT NOT NULL,
-  relation TEXT NOT NULL,
-  expiry INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-
-  PRIMARY KEY (issuer, subject, object, relation)
-);
-
--- Dacar tombstones for revocation handling
-CREATE TABLE IF NOT EXISTS dacar_tombstones (
-  issuer TEXT NOT NULL,
-  subject TEXT NOT NULL,
-  object TEXT NOT NULL,
-  relation TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL,
-
-  PRIMARY KEY (issuer, subject, object, relation)
-);
+-- Dacar authorization tuples live in the `dacar` CLI file store
+-- ($DACAR_HOME, default ~/.dacar), NOT in this SQLite file. An operator
+-- bootstraps/syncs them out-of-band with `dacar init` / `dacar grant` /
+-- `dacar sync`; DacarAuthorizer reads the same store. See
+-- components/DacarAuthorizer.js and cloud.md §7.
 
 -- InReach device mapping for authorization
 CREATE TABLE IF NOT EXISTS inreach_devices (
@@ -89,6 +71,4 @@ CREATE INDEX IF NOT EXISTS idx_buffer_chunks_created ON buffer_chunks(created_at
 CREATE INDEX IF NOT EXISTS idx_buffer_chunks_transmission ON buffer_chunks(identity_hash, transmission_id);
 CREATE INDEX IF NOT EXISTS idx_grib_gates_created ON grib_gates(created_at);
 CREATE INDEX IF NOT EXISTS idx_pending_saildocs_created ON pending_saildocs(created_at);
-CREATE INDEX IF NOT EXISTS idx_dacar_tuples_expiry ON dacar_tuples(expiry);
-CREATE INDEX IF NOT EXISTS idx_dacar_tombstones_expiry ON dacar_tombstones(expires_at);
 CREATE INDEX IF NOT EXISTS idx_inreach_devices_identity ON inreach_devices(identity_hash);

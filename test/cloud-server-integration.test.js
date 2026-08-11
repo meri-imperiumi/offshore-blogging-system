@@ -2,27 +2,20 @@
 //
 // Loads the *real* production graph and runs a SYS STATUS command through it
 // end to end, with external boundaries (IMAP, SMTP, InReach) mocked.
-// Uses the real @reticulum/dacar library for authorization with a temp state dir.
+//
+// DacarAuthorizer is exercised for real, but its `dacar check` subprocess call
+// is replaced with an in-process fake (DacarAuthorizer.di.runCheck) so the test
+// neither needs the `dacar` binary on PATH nor a store on disk. The fake still
+// gates on the requester's identity hash + permission, so the allow/deny
+// routing through the real component is what's verified here.
 
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert");
 const fsp = require("node:fs").promises;
-const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const noflo = require("noflo");
 const { Component } = require("noflo-assembly");
-const {
-  Config,
-  Engine,
-  StateVector,
-  NamespaceHasher,
-  Operation,
-  Tuple,
-  Clock,
-  Action,
-} = require("@reticulum/dacar");
-const { Identity } = require("@reticulum/core");
 
 const GRAPH_PATH = path.join(__dirname, "..", "graphs", "cloud-server.fbp");
 
@@ -32,10 +25,6 @@ const TEST_IDENTITY_HASH = "aa".repeat(16);
 let tmpRoot;
 let repoDir;
 let logPath;
-let dacarDir;
-let dacarState;
-let dacarEngine;
-let dacarIdentity;
 const savedEnv = {};
 const ENV_KEYS = [
   "CLOUD_DB_PATH",
@@ -47,68 +36,19 @@ const ENV_KEYS = [
   "INREACH_REPLY_ADDRESS",
   "ALERT_ADDRESS",
   "LOG_PATH",
-  "DACAR_STATE_DIR",
 ];
 let network;
 
 before(async () => {
   tmpRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "obs-graph-"));
   repoDir = path.join(tmpRoot, "repo");
-  dacarDir = path.join(tmpRoot, "dacar");
   logPath = path.join(tmpRoot, "errors.log");
   await fsp.mkdir(repoDir, { recursive: true });
-  await fsp.mkdir(dacarDir, { recursive: true });
 
-  // Set up test database for DacarAuthorizer
-  const DatabaseHelper = require("../lib/DbHelper");
-  const dbPath = path.join(tmpRoot, "cloud.db");
-  const db = new DatabaseHelper(dbPath);
-  db.initialize();
-
-  // Grant sys:command execute permission to test device
-  // Using DatabaseHelper.saveDacarTuple(issuer, subject, object, relation, expiry)
-  const expiry = Math.floor((Date.now() + 60000) / 1000); // 1 minute from now, in seconds
-  db.saveDacarTuple(
-    "test-issuer", // issuer
-    TEST_IDENTITY_HASH, // subject (identityHash)
-    "sys:command", // object (permission)
-    "execute", // relation
-    expiry,
-  );
-  db.close();
-
-  // Set up Dacar with a temp state directory (for future @reticulum/dacar integration)
-  dacarIdentity = await Identity.generate();
-  dacarState = new StateVector();
-  const clock = new Clock();
-
-  // Grant sys:command execute permission to test device
-  const hasher = new NamespaceHasher(Buffer.alloc(32, 0));
-  const grantee = Buffer.from(TEST_IDENTITY_HASH, "hex");
-  const grantOp = await new Operation({
-    tuple: await Tuple.fromPlaintext({
-      objectId: "sys:command",
-      relation: "execute",
-      grantee,
-      issuer: dacarIdentity.identityHash,
-      hasher,
-    }),
-    action: Action.GRANT,
-    hlc: clock.now(),
-  }).sign(dacarIdentity);
-  dacarState.apply(grantOp);
-
-  // Save Dacar state for DacarAuthorizer to load
-  const dacarStatePath = path.join(dacarDir, "state.msgpack");
-  fs.writeFileSync(dacarStatePath, Buffer.from(dacarState.toPayload()));
-
-  // Write Dacar config with our test identity as root trust anchor (format: { anchors: [...] })
-  const dacarConfigPath = path.join(dacarDir, "config.json");
-  const dacarConfig = { anchors: [dacarIdentity.identityHash] };
-  fs.writeFileSync(dacarConfigPath, JSON.stringify(dacarConfig, null, 2));
-
-  // Create engine with config
-  dacarEngine = new Engine(dacarConfig, dacarState);
+  // The cloud's shared SQLite file (buffer_chunks, grib_gates, …) is created
+  // lazily by the DB-backed components on first message; we only need to point
+  // CLOUD_DB_PATH at a temp file. DacarAuthorizer no longer touches this DB —
+  // it evaluates via the (faked) `dacar check` call, see injectFakeDacar().
 
   // Point the graph's core/ReadEnv nodes at our temp paths / dummy creds.
   for (const key of ENV_KEYS) {
@@ -123,7 +63,6 @@ before(async () => {
   process.env.INREACH_REPLY_ADDRESS = "cloud@example.test";
   process.env.ALERT_ADDRESS = "op@example.test";
   process.env.LOG_PATH = logPath;
-  process.env.DACAR_STATE_DIR = dacarDir;
 });
 
 after(async () => {
@@ -387,6 +326,19 @@ describe("cloud-server.fbp graph integration", () => {
 
     await network.connect();
     assert.ok(imapMock, "MockImapFetcher should be instantiated");
+
+    // Inject an in-process DacarAuthorizer checker so the test doesn't depend
+    // on the `dacar` binary or a store on disk. The real DacarAuthorizer
+    // component (permission 'sys:command') still runs and still routes its
+    // allow/deny through the graph — only the subprocess call is faked.
+    const grant = (grantee, permission) =>
+      Promise.resolve({
+        allowed: grantee === TEST_IDENTITY_HASH,
+      });
+    for (const name of ["BlogAuth", "GribAuth", "SysAuth"]) {
+      const proc = network.processes[name];
+      if (proc && proc.component) proc.component.di = { runCheck: grant };
+    }
 
     // Queue the inbound email the mock IMAP fetcher will emit on the next poll.
     imapMock.queue.push({
