@@ -325,11 +325,13 @@ class AuthVerifier extends Component {
       }
     }
 
-    // Check Dacar tuples (future)
-    // TODO: Implement Dacar lookup
+    // Device → identity mapping comes from the `inreach_devices` SQLite table
+    // (or TEST_* env vars in tests). Capability checking (e.g. blog:publish) is
+    // NOT done here — that's DacarAuthorizer's job, downstream of this
+    // component, once the identity hash is known.
 
-    // Check SQLite database. Lazily open one from the configured dbpath so the
-    // graph is self-contained (no post-start property injection needed).
+    // Lazily open the SQLite DB from the configured dbpath so the graph is
+    // self-contained (no post-start property injection needed).
     if (!this.db && this.dbPath) {
       this.db = new DatabaseHelper(this.dbPath);
       this.db.initialize();
