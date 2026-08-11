@@ -45,6 +45,10 @@ class InReachSender extends Component {
     super({
       description: "Sends chunked payloads via the Garmin InReach web endpoint",
       inPorts: {
+        in: {
+          datatype: "object",
+          required: true,
+        },
         replyaddress: {
           datatype: "string",
           description:
