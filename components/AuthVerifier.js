@@ -1,4 +1,5 @@
 const { Component, fail } = require("noflo-assembly");
+const { Identity, toHex, fromHex } = require("@reticulum/core");
 const DatabaseHelper = require("../lib/DbHelper");
 
 /**
@@ -94,15 +95,30 @@ class AuthVerifier extends Component {
     // Detect Winlink (by signature or sender domain)
     if (this.isWinlink(email)) {
       msg.channel = "winlink";
-      const verification = this.verifyWinlinkSignature(email);
-      msg.identityHash = verification.identityHash;
-      msg.confidence = verification.confidence;
-
-      if (msg.confidence === "none") {
-        return output.sendDone(
-          fail(msg, new Error("Unauthorized: Invalid Winlink signature")),
-        );
-      }
+      // Ed25519 verification is async (WebCrypto). Fire-and-forget and let the
+      // promise own the output lifecycle — `handle` itself must stay sync (see
+      // component-basics.md "Async/Await Trap": a returned Promise is treated
+      // as an implicit sendDone()).
+      this.verifyWinlinkSignature(email)
+        .then((verification) => {
+          msg.identityHash = verification.identityHash;
+          msg.confidence = verification.confidence;
+          if (msg.confidence === "none") {
+            return output.sendDone(
+              fail(msg, new Error("Unauthorized: Invalid Winlink signature")),
+            );
+          }
+          return output.sendDone(msg);
+        })
+        .catch((err) => {
+          console.error(
+            `[AuthVerifier] Winlink verification error: ${err.message}`,
+          );
+          return output.sendDone(
+            fail(msg, new Error(`Unauthorized: Winlink verification error`)),
+          );
+        });
+      return;
     }
     // Detect InReach (by Garmin sender domains)
     else if (this.isInReach(email)) {
@@ -160,21 +176,94 @@ class AuthVerifier extends Component {
   }
 
   /**
-   * Verify Winlink Reticulum signature
+   * Verify the Winlink Reticulum Ed25519 signature.
+   *
+   * The metadata block (produced by the Signal K plugin's `signForWinlink`)
+   * carries IdentityHash, the 64-byte PublicKey (X25519 ‖ Ed25519), Algorithm,
+   * and Sig — so the email is self-contained: no out-of-band identity directory
+   * is needed to resolve hash→pubkey. The signature is over the blog-post
+   * content (the text between the `---BEGIN BLOG POST---` / `---END BLOG
+   * POST---` delimiters), matching exactly what the plugin signed.
+   *
+   * Verification:
+   *   1. Reconstruct the Identity from the embedded public key.
+   *   2. Recompute its identityHash and confirm it equals the claimed
+   *      IdentityHash — otherwise an attacker could supply a victim's
+   *      IdentityHash with their own key and the signature would still verify.
+   *   3. Validate the Ed25519 signature over the signed content.
+   *
+   * Any failure (missing/ malformed fields, hash mismatch, bad signature) →
+   * `{ identityHash: null, confidence: "none" }` so the caller fails closed.
+   *
+   * @returns {Promise<{ identityHash: string|null, confidence: string }>}
    */
-  verifyWinlinkSignature(email) {
-    // Extract Reticulum metadata from email body
+  async verifyWinlinkSignature(email) {
     const metadata = this.extractReticulumMetadata(email);
-    if (!metadata) {
+    if (
+      !metadata ||
+      !metadata.identityHash ||
+      !metadata.publicKey ||
+      !metadata.sig
+    ) {
       return { identityHash: null, confidence: "none" };
     }
 
-    // TODO: Implement actual Ed25519 signature verification
-    // For now, extract the identity hash from the metadata
-    return {
-      identityHash: metadata.identityHash,
-      confidence: metadata.identityHash ? "high" : "medium",
-    };
+    const content = this.extractSignedContent(email);
+    if (content === null) {
+      // No verifiable signed-content block. Winlink signatures currently cover
+      // blog-post content only; a Winlink message without that block cannot be
+      // authenticated and is denied (see cloud.md / SPEC.md §Email signatures).
+      return { identityHash: null, confidence: "none" };
+    }
+
+    try {
+      const publicKey = fromHex(metadata.publicKey);
+      if (publicKey.length !== 64) {
+        return { identityHash: null, confidence: "none" };
+      }
+      const identity = await Identity.fromPublicKey(publicKey);
+
+      // Confirm the reconstructed key hashes to the claimed IdentityHash. This
+      // binds the pubkey to the identity — without it, a forged email could
+      // carry a victim's IdentityHash alongside the attacker's own key.
+      if (
+        toHex(identity.identityHash) !== metadata.identityHash.toLowerCase()
+      ) {
+        return { identityHash: null, confidence: "none" };
+      }
+
+      const signature = fromHex(metadata.sig);
+      const messageBytes = Buffer.from(content, "utf-8");
+      const valid = await identity.validate(signature, messageBytes);
+      if (!valid) {
+        return { identityHash: null, confidence: "none" };
+      }
+
+      return { identityHash: metadata.identityHash, confidence: "high" };
+    } catch (err) {
+      console.error(
+        `[AuthVerifier] Winlink signature verification failed: ${err.message}`,
+      );
+      return { identityHash: null, confidence: "none" };
+    }
+  }
+
+  /**
+   * Extract the signed blog-post content from the email — the text between the
+   * `---BEGIN BLOG POST---` and `---END BLOG POST---` delimiters. This is
+   * exactly the byte range `signForWinlink` signed (the raw content, without
+   * the delimiters), so the signature verifies over identical bytes.
+   *
+   * @param {object} email
+   * @returns {string|null}
+   */
+  extractSignedContent(email) {
+    const body = email.body || email.raw || "";
+    const text = Buffer.isBuffer(body) ? body.toString("utf-8") : String(body);
+    const m = text.match(
+      /---BEGIN BLOG POST---\r?\n([\s\S]*?)\r?\n---END BLOG POST---/,
+    );
+    return m ? m[1] : null;
   }
 
   /**
@@ -304,17 +393,31 @@ class AuthVerifier extends Component {
   }
 
   /**
-   * Extract Reticulum metadata from email body
+   * Extract the Reticulum metadata block from the email body. Parses each
+   * field by name so the block is order-independent. Returns null when no
+   * metadata block is present.
+   *
+   * @param {object} email
+   * @returns {{ identityHash: string|null, publicKey: string|null, algorithm: string|null, sig: string|null }|null}
    */
   extractReticulumMetadata(email) {
     const body = email.body || email.raw || "";
-    const match = body.match(
-      /---BEGIN RETICULUM METADATA---\s*IdentityHash:\s*(\S+)/,
+    const text = Buffer.isBuffer(body) ? body.toString("utf-8") : String(body);
+    const block = text.match(
+      /---BEGIN RETICULUM METADATA---\s*([\s\S]*?)---END RETICULUM METADATA---/,
     );
-    if (match) {
-      return { identityHash: match[1] };
-    }
-    return null;
+    if (!block) return null;
+    const meta = block[1];
+    const field = (key) => {
+      const m = meta.match(new RegExp(`^${key}:\\s*(\\S+)`, "m"));
+      return m ? m[1].trim() : null;
+    };
+    return {
+      identityHash: field("IdentityHash"),
+      publicKey: field("PublicKey"),
+      algorithm: field("Algorithm"),
+      sig: field("Sig"),
+    };
   }
 }
 

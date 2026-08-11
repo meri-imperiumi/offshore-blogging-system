@@ -484,8 +484,15 @@ async function signForWinlink(content, identity) {
   const signature = await identity.sign(contentBytes);
   const sigHex = toHex(signature);
 
+  // Include the 64-byte public key (X25519 ‖ Ed25519) so the cloud can verify
+  // the signature AND recompute the identityHash to confirm the key matches
+  // the claimed IdentityHash — without it the cloud would need an out-of-band
+  // identity directory to resolve hash→pubkey (see components/AuthVerifier.js).
+  const publicKey = await identity.getPublicKey();
+  const publicKeyHex = toHex(publicKey);
+
   return {
-    metadata: `---BEGIN RETICULUM METADATA---\nIdentityHash: ${identityHashHex}\nAlgorithm: Ed25519\nSig: ${sigHex}\n---END RETICULUM METADATA---\n`,
+    metadata: `---BEGIN RETICULUM METADATA---\nIdentityHash: ${identityHashHex}\nPublicKey: ${publicKeyHex}\nAlgorithm: Ed25519\nSig: ${sigHex}\n---END RETICULUM METADATA---\n`,
     content: `---BEGIN BLOG POST---\n${content}\n---END BLOG POST---`,
   };
 }

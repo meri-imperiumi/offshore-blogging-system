@@ -8,12 +8,26 @@
  * by core/ReadEnv nodes inside the graph — this script carries no secrets.
  *
  * Required environment variables (see cloud-server.fbp header):
- *   IMAP_USERNAME, IMAP_PASSWORD, SMTP_USERNAME, SMTP_PASSWORD,
- *   CLOUD_DB_PATH, REPO_PATH, INREACH_REPLY_ADDRESS,
- *   ALERT_ADDRESS, LOG_PATH
+ *   IMAP_USERNAME, IMAP_PASSWORD         mailbox.org IMAP creds (Listener + Acker)
+ *   SMTP_USERNAME, SMTP_PASSWORD         mailbox.org SMTP creds (SmtpResponder)
+ *   CLOUD_DB_PATH                         shared SQLite file (buffer_chunks, …)
+ *   REPO_PATH                             local clone of the blog repo
+ *   INREACH_REPLY_ADDRESS                 cloud address shown to InReach recipients
+ *   ALERT_ADDRESS                         operator address for unrecoverable alerts
+ *   LOG_PATH                              ErrorLogger log file
  *
  * Optional:
- *   CLOUD_GRAPH  override the graph path (default: graphs/cloud-server.fbp)
+ *   DACAR_HOME                            dacar CLI store path (default ~/.dacar);
+ *                                          operator bootstraps with `dacar init` /
+ *                                          `dacar grant`. See cloud.md §7.
+ *   DACAR_BIN                             explicit `dacar` binary path (default: PATH)
+ *   CLOUD_GRAPH                           override the graph path
+ *
+ * Before first boot, bootstrap authorization grants on this host:
+ *   dacar init
+ *   dacar grant <identityHash> execute blog:publish
+ *   dacar grant <identityHash> execute grib:request
+ *   dacar grant <identityHash> execute sys:command
  *
  * Usage:
  *   node scripts/cloud-server.js
