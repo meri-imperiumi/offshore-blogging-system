@@ -383,12 +383,12 @@
       <div class="card">
         <h2>Reassemble Messages</h2>
         <div class="info">
-          Paste each received message below. The system groups blog chunks by post ID and GRIB/weather chunks by transmission ID, then reassembles them.
+          Paste each received compact-header message below. The system groups chunks by transmission ID and type, then reassembles blog text/image (server-side) and GRIBs (server-side, persisted for any Signal K user to download).
         </div>
         <div class="form-group">
           <label for="chunkInput">Add a chunk (blog or GRIB message):</label>
           <div class="chunk-input">
-            <input type="text" id="chunkInput" placeholder="msg 1/3:grib:rabc123\n<base64>  OR  0805T0107a91f:LT$?...">
+            <input type="text" id="chunkInput" placeholder="rqnnG0305:<base64>  or  0715T0102687c:<payload>">
             <button id="addChunkBtn" type="button">Add Chunk</button>
           </div>
         </div>
@@ -408,6 +408,14 @@
           <h3>Result</h3>
           <div id="reassembleOutput"></div>
         </div>
+      </div>
+
+      <div class="card">
+        <h3>Stored GRIBs (latest first)</h3>
+        <div class="info">
+          GRIBs assembled by any Signal K user are persisted server-side and listed here for anyone to download.
+        </div>
+        <div id="storedGribsList" class="message-list"></div>
       </div>
     </div>
   </div>

@@ -100,3 +100,173 @@ test("encode endpoint does not 403 when blog is enabled", async () => {
   // so it should fail with 500, not the opt-in 403.
   assert.notStrictEqual(res.statusCode, 403);
 });
+
+// --- GRIB store endpoints (server-side assembly + persistence) ---
+
+// A richer res mock that records sendFile + headers (download path needs them).
+function mockResFull() {
+  return {
+    statusCode: 200,
+    body: null,
+    sentFile: null,
+    headers: {},
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(data) {
+      this.body = data;
+      return this;
+    },
+    setHeader(k, v) {
+      this.headers[k] = v;
+    },
+    sendFile(p) {
+      this.sentFile = p;
+    },
+  };
+}
+
+// Build compact-header type-G chunks for a fake GRIB binary.
+function makeGribChunks(transmissionId, binary, maxChunkSize = 96) {
+  const b64 = Buffer.from(binary).toString("base64");
+  const total = Math.ceil(b64.length / maxChunkSize);
+  const out = [];
+  for (let i = 0; i < total; i++) {
+    const idx = String(i + 1).padStart(2, "0");
+    const tot = String(total).padStart(2, "0");
+    const piece = b64.slice(i * maxChunkSize, (i + 1) * maxChunkSize);
+    out.push(`${transmissionId}G${idx}${tot}:${piece}`);
+  }
+  return out;
+}
+
+test("status endpoint reports gribStoreEnabled", async () => {
+  const { handlers } = await setupPlugin({});
+  const res = mockRes();
+  await handlers["GET /api/status"]({}, res);
+  assert.strictEqual(res.body.gribStoreEnabled, true);
+});
+
+test("assemble endpoint rejects missing chunks array with 400", async () => {
+  const { handlers } = await setupPlugin({});
+  const res = mockRes();
+  await handlers["POST /api/grib/assemble"]({ body: {} }, res);
+  assert.strictEqual(res.statusCode, 400);
+});
+
+test("assemble persists a GRIB and list returns it latest-first", async () => {
+  const fs = require("node:fs").promises;
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-"));
+  try {
+    const { handlers } = await setupPlugin({ gribStoragePath: dir });
+
+    const grib = Buffer.concat([
+      Buffer.from("GRIB", "ascii"),
+      Buffer.alloc(200, 0x41),
+    ]);
+    const chunks = makeGribChunks("plug", grib);
+
+    const assembleRes = mockRes();
+    await handlers["POST /api/grib/assemble"](
+      { body: { chunks } },
+      assembleRes,
+    );
+    assert.strictEqual(assembleRes.statusCode, 200, assembleRes.body?.error);
+    assert.strictEqual(assembleRes.body.grib.transmissionId, "plug");
+    assert.strictEqual(assembleRes.body.grib.size, grib.length);
+
+    const listRes = mockRes();
+    await handlers["GET /api/gribs"]({}, listRes);
+    assert.strictEqual(listRes.statusCode, 200);
+    assert.ok(listRes.body.gribs.some((g) => g.transmissionId === "plug"));
+    assert.strictEqual(listRes.body.gribs[0].transmissionId, "plug");
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("assemble reports missing chunks with 409", async () => {
+  const { handlers } = await setupPlugin({});
+  const grib = Buffer.concat([
+    Buffer.from("GRIB", "ascii"),
+    Buffer.alloc(300, 0x41),
+  ]);
+  const chunks = makeGribChunks("miss", grib);
+  const incomplete = [chunks[0], ...chunks.slice(2)];
+  const res = mockRes();
+  await handlers["POST /api/grib/assemble"](
+    { body: { chunks: incomplete } },
+    res,
+  );
+  assert.strictEqual(res.statusCode, 409);
+  assert.ok(Array.isArray(res.body.missing));
+});
+
+test("assemble rejects bad GRIB magic with 422", async () => {
+  const { handlers } = await setupPlugin({});
+  const bad = Buffer.concat([
+    Buffer.from("XXXX", "ascii"),
+    Buffer.alloc(100, 0x41),
+  ]);
+  const res = mockRes();
+  await handlers["POST /api/grib/assemble"](
+    { body: { chunks: makeGribChunks("badm", bad) } },
+    res,
+  );
+  assert.strictEqual(res.statusCode, 422);
+});
+
+test("download sends the persisted .grb file", async () => {
+  const fs = require("node:fs").promises;
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-dl-"));
+  try {
+    const { handlers } = await setupPlugin({ gribStoragePath: dir });
+    const grib = Buffer.concat([
+      Buffer.from("GRIB", "ascii"),
+      Buffer.alloc(50, 0x42),
+    ]);
+    await handlers["POST /api/grib/assemble"](
+      { body: { chunks: makeGribChunks("dl01", grib) } },
+      mockRes(),
+    );
+
+    const dlRes = mockResFull();
+    await handlers["GET /api/gribs/:id/download"](
+      { params: { id: "dl01" } },
+      dlRes,
+    );
+    assert.strictEqual(dlRes.statusCode, 200);
+    assert.ok(dlRes.sentFile.endsWith("dl01.grb"));
+    assert.strictEqual(
+      dlRes.headers["Content-Disposition"],
+      'attachment; filename="dl01.grb"',
+    );
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("download 404s for an unknown id", async () => {
+  const { handlers } = await setupPlugin({});
+  const res = mockRes();
+  await handlers["GET /api/gribs/:id/download"](
+    { params: { id: "nope" } },
+    res,
+  );
+  assert.strictEqual(res.statusCode, 404);
+});
+
+test("download rejects an invalid id with 400", async () => {
+  const { handlers } = await setupPlugin({});
+  const res = mockRes();
+  await handlers["GET /api/gribs/:id/download"](
+    { params: { id: "../etc" } },
+    res,
+  );
+  assert.strictEqual(res.statusCode, 400);
+});

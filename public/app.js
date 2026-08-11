@@ -206,6 +206,9 @@ class OffshoreBloggingUI {
     document
       .getElementById("clearChunksBtn")
       .addEventListener("click", () => this.clearChunks());
+
+    // Populate the shared, latest-first list of persisted GRIBs.
+    this.loadStoredGribs();
   }
 
   // Fetch feature flags from the plugin so opt-in features (like blog
@@ -785,53 +788,44 @@ class OffshoreBloggingUI {
 
     if (!chunk) return;
 
-    // Try blog format: <postid:4><type:1[TI]><idx:2><total:2><crc:4>:<data>
-    const blogMatch = chunk.match(
-      /^([0-9A-Za-z]{4})([TI])(\d{2})(\d{2})([0-9a-f]{4}):(.*)$/,
+    // Unified Compact Chunk Header Protocol (work doc #12):
+    //   [ID:4][Type:1][Index:2][Total:2][Meta?:4]:[Payload]
+    // The optional 4-hex Meta carries the CRC for blog text/image (T/I);
+    // it is omitted for downlink GRIB (G) and system (S) chunks. The
+    // deprecated `msg i/total:type:id\n` lo-fi envelope is no longer
+    // accepted — only the compact format is supported.
+    const match = chunk.match(
+      /^([a-zA-Z0-9]{4})([A-Za-z])(\d{2})(\d{2})([0-9a-fA-F]{4})?:(.*)$/s,
     );
 
-    // Try lo-fi format: msg <idx>/<total>:<partType>:<transmissionId>\n<data>
-    // (used by InReachSender for multi-chunk GRIB and text deliveries).
-    // The header and data are separated by a newline; we match the header
-    // prefix and take the rest as data so we don't care whether the paste
-    // preserved the \n or replaced it with a space.
-    const lofiMatch = chunk.match(/^msg\s+(\d+)\/(\d+):(\w+):(\w+)\s*/);
-
-    if (blogMatch) {
-      const [, postid, type, idx, total, crc, data] = blogMatch;
-      this.chunks.push({
-        format: "blog",
-        postid,
-        type,
-        idx: parseInt(idx, 10),
-        total: parseInt(total, 10),
-        crc,
-        data,
-        raw: chunk,
-      });
-    } else if (lofiMatch) {
-      const [, idx, total, partType, transmissionId] = lofiMatch;
-      const data = chunk.substring(lofiMatch[0].length).trim();
-      this.chunks.push({
-        format: "lofi",
-        partType,
-        transmissionId,
-        idx: parseInt(idx, 10),
-        total: parseInt(total, 10),
-        data,
-        raw: chunk,
-      });
-    } else {
+    if (!match) {
       alert(
         "Unrecognized chunk format.\n\n" +
-          "Blog:  <postid:4><type:1><idx:2><total:2><crc:4>:<data>\n" +
-          "Lo-fi: msg <idx>/<total>:<partType>:<id>\\n<data>",
+          "Expected compact header:\n" +
+          "  <id:4><type:1><idx:2><total:2>[meta:4]:<data>\n" +
+          "e.g. rqnnG0305:<base64>  or  0715T0102687c:<payload>",
       );
       return;
     }
 
+    const [, transmissionId, typeChar, idx, total, meta, data] = match;
+    this.chunks.push({
+      transmissionId,
+      typeChar: typeChar.toUpperCase(),
+      idx: parseInt(idx, 10),
+      total: parseInt(total, 10),
+      meta, // CRC16 for T/I; undefined for G/S
+      data,
+      raw: chunk,
+    });
+
     input.value = "";
     this.renderChunks();
+  }
+
+  // Human-readable label for a compact type character.
+  static chunkTypeLabel(t) {
+    return { T: "Text", I: "Image", G: "GRIB", S: "System" }[t] || t;
   }
 
   renderChunks() {
@@ -845,62 +839,25 @@ class OffshoreBloggingUI {
 
     container.style.display = "block";
 
-    // Group blog chunks by postid-type, lo-fi chunks by transmissionId
-    const blogGroups = {};
-    const lofiGroups = {};
-    this.chunks.forEach((chunk) => {
-      if (chunk.format === "lofi") {
-        const key = chunk.transmissionId;
-        if (!lofiGroups[key]) {
-          lofiGroups[key] = {
-            transmissionId: chunk.transmissionId,
-            partType: chunk.partType,
-            total: chunk.total,
-            chunks: {},
-          };
-        }
-        lofiGroups[key].chunks[chunk.idx] = chunk;
-        return;
-      }
-      // Blog format (default for backward compat)
-      const key = `${chunk.postid}-${chunk.type}`;
-      if (!blogGroups[key]) {
-        blogGroups[key] = {
-          postid: chunk.postid,
-          type: chunk.type,
+    // Group all chunk types by transmissionId-typeChar so a blog post's
+    // text and image sequences (which share a transmissionId) are handled
+    // independently, and GRIB/system sequences stay separate too.
+    const groups = {};
+    for (const chunk of this.chunks) {
+      const key = `${chunk.transmissionId}-${chunk.typeChar}`;
+      if (!groups[key]) {
+        groups[key] = {
+          transmissionId: chunk.transmissionId,
+          typeChar: chunk.typeChar,
+          total: chunk.total,
           chunks: {},
         };
       }
-      blogGroups[key].chunks[chunk.idx] = chunk;
-    });
-
-    let html = "";
-
-    // Render blog groups
-    for (const [_key, group] of Object.entries(blogGroups)) {
-      const chunkIds = Object.keys(group.chunks)
-        .map(Number)
-        .sort((a, b) => a - b);
-      const total = group.chunks[chunkIds[0]].total;
-      const missing = [];
-
-      for (let i = 1; i <= total; i++) {
-        if (!group.chunks[i]) missing.push(i);
-      }
-
-      const typeLabel = group.type === "T" ? "Text" : "Image";
-      const statusClass = missing.length === 0 ? "success" : "info";
-
-      html += `
-        <div class="${statusClass}" style="margin-bottom: 10px;">
-          <strong>Post ${group.postid} (${typeLabel}):</strong> ${chunkIds.length}/${total} chunks
-          ${missing.length > 0 ? `<br>Missing: ${missing.join(", ")}` : "<br>✓ Complete"}
-        </div>
-      `;
+      groups[key].chunks[chunk.idx] = chunk;
     }
 
-    // Render lo-fi groups (GRIB, etc.)
-    for (const group of Object.values(lofiGroups)) {
+    let html = "";
+    for (const group of Object.values(groups)) {
       const chunkIds = Object.keys(group.chunks)
         .map(Number)
         .sort((a, b) => a - b);
@@ -909,15 +866,11 @@ class OffshoreBloggingUI {
       for (let i = 1; i <= total; i++) {
         if (!group.chunks[i]) missing.push(i);
       }
-      const typeLabel =
-        group.partType === "grib"
-          ? "GRIB"
-          : group.partType.charAt(0).toUpperCase() + group.partType.slice(1);
       const statusClass = missing.length === 0 ? "success" : "info";
-
+      const label = OffshoreBloggingUI.chunkTypeLabel(group.typeChar);
       html += `
         <div class="${statusClass}" style="margin-bottom: 10px;">
-          <strong>${typeLabel} (${group.transmissionId}):</strong> ${chunkIds.length}/${total} chunks
+          <strong>${label} (${group.transmissionId}):</strong> ${chunkIds.length}/${total} chunks
           ${missing.length > 0 ? `<br>Missing: ${missing.join(", ")}` : "<br>✓ Complete"}
         </div>
       `;
@@ -932,21 +885,20 @@ class OffshoreBloggingUI {
       return;
     }
 
-    // Group chunks by transmissionId
+    // Group by transmissionId-typeChar (matches renderChunks).
     const groups = {};
-    this.chunks.forEach((chunk) => {
-      const key = chunk.transmissionId;
+    for (const chunk of this.chunks) {
+      const key = `${chunk.transmissionId}-${chunk.typeChar}`;
       if (!groups[key]) {
         groups[key] = {
           transmissionId: chunk.transmissionId,
           typeChar: chunk.typeChar,
-          type: chunk.type,
           total: chunk.total,
-          entries: {},
+          chunks: {},
         };
       }
-      groups[key].entries[chunk.idx] = chunk.data;
-    });
+      groups[key].chunks[chunk.idx] = chunk;
+    }
 
     const resultsDiv = document.getElementById("reassembleResults");
     const output = document.getElementById("reassembleOutput");
@@ -954,145 +906,168 @@ class OffshoreBloggingUI {
 
     let html = "";
 
-    // Reassemble blog chunks (server-side: dictionary decompression)
     for (const group of Object.values(groups)) {
-      // Only T and I types go to server for decompression
-      if (group.typeChar !== "T" && group.typeChar !== "I") {
-        continue;
-      }
-
-      try {
-        const response = await fetch(
-          "/plugins/signalk-offshore-blogging/api/reassemble",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chunks: group.entries,
-              type: group.typeChar,
-            }),
-          },
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || "Reassembly failed");
-        }
-
-        if (group.typeChar === "T") {
-          html += `
-            <div class="success">
-              <h4>Blog Post ${group.transmissionId} (Text)</h4>
-              <p><strong>Title:</strong> ${data.title}</p>
-              <p><strong>Date:</strong> ${data.date}</p>
-              <textarea class="code-block" readonly>${this.escapeHtml(data.body)}</textarea>
-            </div>
-          `;
-        } else if (group.typeChar === "I") {
-          html += `
-            <div class="success">
-              <h4>Blog Post ${group.transmissionId} (Image)</h4>
-              <img src="${data.image}" style="max-width: 100%; border-radius: 5px;" alt="Decoded image">
-            </div>
-          `;
-        }
-      } catch (error) {
-        html += `
-          <div class="error">
-            <h4>Blog Post ${group.transmissionId} (${group.typeChar === "T" ? "Text" : "Image"})</h4>
-            <p>${this.escapeHtml(error.message)}</p>
-          </div>
-        `;
-      }
-    }
-
-    // Reassemble non-blog chunks (client-side: base64 concat → binary → download)
-    // GRIB (G) and system (S) chunks are plain base64 slices, no decompression
-    for (const group of Object.values(groups)) {
-      if (group.typeChar === "T" || group.typeChar === "I") {
-        continue; // Already handled above
-      }
-
       const total = group.total;
-
-      // Check for missing chunks
       const missing = [];
       for (let i = 1; i <= total; i++) {
-        if (!group.entries[i]) missing.push(i);
+        if (!group.chunks[i]) missing.push(i);
       }
 
       if (missing.length > 0) {
-        const label =
-          group.typeChar === "G"
-            ? "GRIB"
-            : group.type.charAt(0).toUpperCase() + group.type.slice(1);
+        const label = OffshoreBloggingUI.chunkTypeLabel(group.typeChar);
         html += `
           <div class="error">
             <h4>${label} (${group.transmissionId})</h4>
-            <p>Missing chunks: ${missing.join(", ")}</p>
+            <p>Missing chunks: ${missing.join(", ")} of ${total}</p>
           </div>
         `;
         continue;
       }
 
-      try {
-        // Concatenate base64 chunks in order (1-based)
-        let base64Data = "";
+      // Blog text/image: server-side dictionary decompression.
+      if (group.typeChar === "T" || group.typeChar === "I") {
+        // BlogCodec.reassembleChunks expects {idx: {total, crc, data}}.
+        const entries = {};
         for (let i = 1; i <= total; i++) {
-          base64Data += group.entries[i];
+          const c = group.chunks[i];
+          entries[i] = { total: c.total, crc: c.meta, data: c.data };
         }
-        base64Data = base64Data.replace(/\s+/g, "");
-
-        // Decode base64 → binary
-        const binary = atob(base64Data);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i);
-        }
-
-        if (group.typeChar === "G") {
-          // Create a downloadable .grb file
-          const blob = new Blob([bytes], { type: "application/octet-stream" });
-          const url = URL.createObjectURL(blob);
-          const magic =
-            bytes.length >= 4
-              ? String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3])
-              : "";
-          const magicOk = magic === "GRIB";
+        try {
+          const response = await fetch(
+            "/plugins/signalk-offshore-blogging/api/reassemble",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ chunks: entries, type: group.typeChar }),
+            },
+          );
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "Reassembly failed");
+          }
+          if (group.typeChar === "T") {
+            html += `
+              <div class="success">
+                <h4>Blog Post ${group.transmissionId} (Text)</h4>
+                <p><strong>Title:</strong> ${this.escapeHtml(data.title)}</p>
+                <p><strong>Date:</strong> ${this.escapeHtml(data.date)}</p>
+                <textarea class="code-block" readonly>${this.escapeHtml(data.body)}</textarea>
+              </div>
+            `;
+          } else {
+            html += `
+              <div class="success">
+                <h4>Blog Post ${group.transmissionId} (Image)</h4>
+                <img src="${data.image}" style="max-width: 100%; border-radius: 5px;" alt="Decoded image">
+              </div>
+            `;
+          }
+        } catch (error) {
+          const label = OffshoreBloggingUI.chunkTypeLabel(group.typeChar);
           html += `
-            <div class="success">
-              <h4>GRIB (${group.transmissionId})</h4>
-              <p><strong>Size:</strong> ${bytes.length} bytes</p>
-              <p><strong>Magic:</strong> ${this.escapeHtml(magic)} ${magicOk ? "✓" : "⚠ expected GRIB"}</p>
-              <a href="${url}" download="${group.transmissionId}.grb" class="btn">Download .grb</a>
+            <div class="error">
+              <h4>Blog Post ${group.transmissionId} (${label})</h4>
+              <p>${this.escapeHtml(error.message)}</p>
             </div>
           `;
-        } else {
-          // System messages or other text
-          const text = new TextDecoder().decode(bytes);
-          html += `
-            <div class="success">
-              <h4>${group.type} (${group.transmissionId})</h4>
-              <textarea class="code-block" readonly>${this.escapeHtml(text)}</textarea>
-            </div>
-          `;
         }
-      } catch (error) {
-        const label =
-          group.typeChar === "G"
-            ? "GRIB"
-            : group.type.charAt(0).toUpperCase() + group.type.slice(1);
-        html += `
-          <div class="error">
-            <h4>${label} (${group.transmissionId})</h4>
-            <p>${this.escapeHtml(error.message)}</p>
-          </div>
-        `;
+        continue;
       }
+
+      // GRIB: assemble server-side and persist so any Signal K user can
+      // download it later (not only the person who pasted the chunks).
+      // Listed latest-first via GET /api/gribs.
+      if (group.typeChar === "G") {
+        const orderedRaws = [];
+        for (let i = 1; i <= total; i++) orderedRaws.push(group.chunks[i].raw);
+        try {
+          const response = await fetch(
+            "/plugins/signalk-offshore-blogging/api/grib/assemble",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ chunks: orderedRaws }),
+            },
+          );
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "GRIB assembly failed");
+          }
+          const g = data.grib;
+          const downloadUrl = `/plugins/signalk-offshore-blogging/api/gribs/${encodeURIComponent(g.id)}/download`;
+          html += `
+            <div class="success">
+              <h4>GRIB (${g.transmissionId})</h4>
+              <p><strong>Size:</strong> ${g.size} bytes</p>
+              <p>Assembled &amp; persisted server-side — available to all Signal K users.</p>
+              <a href="${downloadUrl}" download="${g.transmissionId}.grb" class="btn">Download .grb</a>
+            </div>
+          `;
+          // Refresh the shared, latest-first list with the new entry.
+          this.loadStoredGribs();
+        } catch (error) {
+          html += `
+            <div class="error">
+              <h4>GRIB (${group.transmissionId})</h4>
+              <p>${this.escapeHtml(error.message)}</p>
+            </div>
+          `;
+        }
+        continue;
+      }
+
+      // System (S) and other plain-text chunks: concatenate payloads.
+      let text = "";
+      for (let i = 1; i <= total; i++) text += group.chunks[i].data;
+      const label = OffshoreBloggingUI.chunkTypeLabel(group.typeChar);
+      html += `
+        <div class="success">
+          <h4>${label} (${group.transmissionId})</h4>
+          <textarea class="code-block" readonly>${this.escapeHtml(text)}</textarea>
+        </div>
+      `;
     }
 
     output.innerHTML = html;
+  }
+
+  /**
+   * Load the server-persisted GRIBs (latest-first) so any Signal K user can
+   * see and download previously assembled weather files.
+   */
+  async loadStoredGribs() {
+    const container = document.getElementById("storedGribsList");
+    if (!container) return;
+    try {
+      const response = await fetch(
+        "/plugins/signalk-offshore-blogging/api/gribs",
+      );
+      const data = await response.json();
+      const gribs = data.gribs || [];
+      if (gribs.length === 0) {
+        container.innerHTML =
+          '<p style="color:#888;">No persisted GRIBs yet.</p>';
+        return;
+      }
+      container.innerHTML = gribs
+        .map((g) => {
+          const when = new Date(g.createdAt).toLocaleString();
+          const url = `/plugins/signalk-offshore-blogging/api/gribs/${encodeURIComponent(g.id)}/download`;
+          return `
+            <div class="message-item">
+              <div class="message-content">
+                <strong>${this.escapeHtml(g.transmissionId)}</strong>
+                — ${g.size} bytes — ${this.escapeHtml(when)}
+              </div>
+              <a href="${url}" download="${g.transmissionId}.grb" class="copy-btn">Download</a>
+            </div>
+          `;
+        })
+        .join("");
+    } catch (_error) {
+      container.innerHTML =
+        '<p style="color:#ff6b6b;">Could not load stored GRIBs.</p>';
+    }
   }
 
   clearChunks() {

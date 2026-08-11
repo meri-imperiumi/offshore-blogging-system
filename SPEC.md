@@ -55,7 +55,8 @@ Winlink has a good built-in weather fetching flow using [Saildocs](http://www.sa
 - For simple requests, we utilize user's current location (received via InReach tracking, AIS, or Winlink position report), fetch latest ECMWF grib data and produce the requested subset and send it to user directly
 - For more complex requests, we send it onwards to Saildocs and then send to user
 - For requests that produce over 10 messages, we first send user a message telling the transmit size and wait for a YES/NO response before transmitting
-- User copy-pastes the individual messages into a web interface in the Signal K plugin to construct the full Grib transmission. This is then made available to other Signal K plugins, as well as for the user to download (for visualization in programs like LuckGrib)
+- User copy-pastes the individual compact-header messages into a web interface in the Signal K plugin. The plugin assembles the GRIB server-side, persists it, and makes it available to any Signal K user (not only the originator) for download (for visualization in programs like LuckGrib). Persisted GRIBs are listed latest-first.
+  - Only the Unified Compact Chunk Header Protocol chunk format (`[ID:4][Type:1][Index:2][Total:2][Meta?:4]:[Payload]`) is accepted; the deprecated `msg <idx>/<total>:<partType>:<transmissionId>` lo-fi envelope is no longer supported.
 
 There are pre-existing tools for this flow that we can use as reference/inspiration. See `references/GRIB-via-inReach/` and the more advanced `references/MarineGRIB-InReach-Transmitter/`.
 

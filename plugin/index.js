@@ -13,6 +13,8 @@ const { toHex } = require("@reticulum/core");
 // Core blog codec logic lives in lib/BlogCodec.js so it can be shared
 // between this plugin (encode) and the NoFlo cloud pipeline (decode).
 const BlogCodec = require("../lib/BlogCodec.js");
+// Server-side GRIB assembly & persistence (decode/download path).
+const { GribStore } = require("../lib/GribStore.js");
 const {
   DATA_BUDGET,
   SAIL_DICT,
@@ -515,6 +517,27 @@ module.exports = (app) => {
     app.setPluginStatus("Ready");
   };
 
+  // Lazy GRIB store (server-side assembly + persistence). Created on first
+  // use so tests can inject a temp dir via config.gribStoragePath without
+  // touching the real Signal K data directory. Assembled GRIBs are persisted
+  // here so any Signal K user can download them, not only the originator.
+  plugin.getGribStore = function getGribStore() {
+    if (!plugin._gribStore) {
+      const base =
+        typeof app.getDataDirPath === "function"
+          ? app.getDataDirPath()
+          : path.join(
+              process.env.HOME || process.env.USERPROFILE || process.cwd(),
+              ".signalk",
+            );
+      const dir =
+        plugin.config?.gribStoragePath ||
+        path.join(base, "signalk-offshore-blogging", "gribs");
+      plugin._gribStore = new GribStore(dir);
+    }
+    return plugin._gribStore;
+  };
+
   plugin.registerWithRouter = (router) => {
     // Serve static files
     router.get("/", (_req, res) => {
@@ -526,6 +549,8 @@ module.exports = (app) => {
       res.json({
         blogEnabled: !!plugin.config?.enableBlogEncoding,
         defaultImageBudget: plugin.config?.defaultImageBudget || 5,
+        // GRIB store is always available (decode/download, no opt-in needed):
+        gribStoreEnabled: true,
       });
     });
 
@@ -701,6 +726,79 @@ module.exports = (app) => {
       }
     });
 
+    // API: Assemble GRIB chunks server-side and persist for shared download.
+    // Accepts raw compact-header chunks (type 'G'); the server parses,
+    // validates, and stores the binary so any Signal K user can download it
+    // later. Listed latest-first via GET /api/gribs.
+    router.post("/api/grib/assemble", async (req, res) => {
+      try {
+        const { chunks, requestedBy } = req.body || {};
+        if (!Array.isArray(chunks) || chunks.length === 0) {
+          return res.status(400).json({
+            error:
+              "chunks (non-empty array of compact-header strings) is required",
+          });
+        }
+        const store = plugin.getGribStore();
+        const entry = await store.persist(chunks, requestedBy);
+        app.debug(
+          `Persisted GRIB ${entry.transmissionId} (${entry.size} bytes)`,
+        );
+        res.json({ ok: true, grib: entry });
+      } catch (error) {
+        if (error.code === "MISSING_CHUNKS") {
+          return res.status(409).json({
+            error: error.message,
+            missing: error.missing,
+            total: error.total,
+          });
+        }
+        if (error.code === "BAD_MAGIC") {
+          return res.status(422).json({
+            error: error.message,
+            magic: error.magic,
+          });
+        }
+        if (error.code === "NOT_GRIB" || error.code === "BAD_FORMAT") {
+          return res.status(400).json({ error: error.message });
+        }
+        app.error(`GRIB assemble error: ${error.message}`);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // API: List persisted GRIBs, latest-first.
+    router.get("/api/gribs", async (_req, res) => {
+      try {
+        const store = plugin.getGribStore();
+        const gribs = await store.list();
+        res.json({ gribs });
+      } catch (error) {
+        app.error(`GRIB list error: ${error.message}`);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // API: Download a persisted GRIB by id (transmissionId).
+    router.get("/api/gribs/:id/download", async (req, res) => {
+      try {
+        const store = plugin.getGribStore();
+        const filepath = store.getFilePath(req.params.id);
+        await fs.access(filepath);
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${req.params.id}.grb"`,
+        );
+        res.setHeader("Content-Type", "application/octet-stream");
+        res.sendFile(filepath);
+      } catch (error) {
+        if (error.code === "BAD_ID") {
+          return res.status(400).json({ error: error.message });
+        }
+        res.status(404).json({ error: "GRIB not found" });
+      }
+    });
+
     // API: Sign for Winlink
     router.post("/api/sign", async (req, res) => {
       if (!plugin.config?.enableBlogEncoding) {
@@ -789,6 +887,13 @@ module.exports = (app) => {
         title: "Reticulum identity path",
         description:
           "Path to stored Reticulum identity file for Winlink signing. If not provided, will try to use signalk-reticulum plugin's identity.",
+        default: "",
+      },
+      gribStoragePath: {
+        type: "string",
+        title: "GRIB storage path (optional)",
+        description:
+          "Where to persist assembled GRIB files so any Signal K user can download them. Defaults to <Signal K data dir>/signalk-offshore-blogging/gribs.",
         default: "",
       },
     },
