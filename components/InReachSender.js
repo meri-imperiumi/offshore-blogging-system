@@ -32,12 +32,20 @@ const InReachClient = require("../lib/InReachClient");
 
 // Injectable client factory so tests can substitute a mock client without
 // touching the network. Production uses the real InReachClient.
-// generateTransmissionId synthesizes the sequence id for an outbound
-// multi-chunk envelope; it must match the boat's MessageReassembler header
-// grammar (\w+) and is injectable so tests can pin it.
+// generateTransmissionId synthesizes the 4-char Base62 sequence id for an
+// outbound compact header; it must match the unified protocol's ID field
+// ([a-zA-Z0-9]{4}) and is injectable so tests can pin it.
 const di = {
   createClient: (options) => new InReachClient(options),
-  generateTransmissionId: () => `r${Math.random().toString(36).slice(2, 8)}`,
+  generateTransmissionId: () => {
+    const chars =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let id = "";
+    for (let i = 0; i < 4; i++) {
+      id += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return id;
+  },
 };
 
 class InReachSender extends Component {
@@ -89,6 +97,27 @@ class InReachSender extends Component {
     if (!this.client || this.client.replyAddress !== this.replyAddress) {
       this.client = di.createClient({ replyAddress: this.replyAddress });
     }
+  }
+
+  /**
+   * Wrap raw multi-chunk payloads in the Unified Compact Header Protocol
+   * format: [ID:4][Type:1][Index:2][Total:2]:[Payload]
+   *
+   * The type character is derived from msg.partType or msg.intent:
+   *   grib → 'G', text → 'T', sys → 'S'
+   */
+  wrapChunks(chunks, msg) {
+    const transmissionId = msg.transmissionId || di.generateTransmissionId();
+    const partType = msg.partType || (msg.intent === "GRIB" ? "grib" : "text");
+    const typeChar =
+      { grib: "G", text: "T", sys: "S", image: "I" }[partType] || "T";
+    const total = chunks.length;
+
+    return chunks.map((chunk, i) => {
+      const index = String(i + 1).padStart(2, "0");
+      const totalStr = String(total).padStart(2, "0");
+      return `${transmissionId}${typeChar}${index}${totalStr}:${chunk}`;
+    });
   }
 
   handle(input, output) {
@@ -155,21 +184,22 @@ class InReachSender extends Component {
       return output.sendDone({ error: msg });
     }
 
-    // Wrap multi-chunk payloads in the sequence envelope the boat's
-    // MessageReassembler expects: "msg <i>/<total>:<partType>:<transmissionId>\n<chunk>"
-    // (1-based). Single-chunk payloads are sent as-is — the reassembler passes
-    // headerless messages through unchanged, so short confirmations pay no
-    // per-message overhead. partType labels the content for the boat (default
-    // 'text'; GRIB deliveries get 'grib'). Either field may be supplied on the
-    // msg to override the synthesis.
-    const partType = msg.partType || (msg.intent === "GRIB" ? "grib" : "text");
-    const transmissionId = msg.transmissionId || di.generateTransmissionId();
-    const toSend =
-      chunks.length > 1
-        ? chunks.map(
-            (chunk, i) =>
-              `msg ${i + 1}/${chunks.length}:${partType}:${transmissionId}\n${chunk}`,
-          )
+    // With the Unified Compact Header Protocol, multi-chunk payloads from
+    // GribChunker and StatusBuilder already carry compact headers
+    // ([ID:4][Type:1][Index:2][Total:2]:[Payload]). Single-chunk notifications
+    // (e.g. "Blog OK: 2026-08-09.md") are sent headerless — the reassembler
+    // passes headerless messages through unchanged.
+    //
+    // If raw multi-chunk payloads arrive without compact headers (no component
+    // in the production graph does this, but tests may), wrap them using the
+    // compact format so they can still be reassembled on the boat.
+    const hasCompactHeaders = chunks[0].match(
+      /^[a-zA-Z0-9]{4}[A-Za-z]\d{2}\d{2}:/,
+    );
+    const toSend = hasCompactHeaders
+      ? chunks
+      : chunks.length > 1
+        ? this.wrapChunks(chunks, msg)
         : chunks;
 
     this.ensureClient();

@@ -69,15 +69,28 @@ describe("GribChunker", () => {
       data.payload.length > 1,
       "200-byte GRIB should produce more than one 140-char chunk",
     );
-    // Each chunk must be <= max_chunk_size
+    // Each chunk should have compact header: [ID:4][G][Index:2][Total:2]:[data]
+    const headerRegex = /^[a-zA-Z0-9]{4}G\d{2}\d{2}:/;
     for (const chunk of data.payload) {
       assert.ok(
-        chunk.length <= 140,
-        `chunk length ${chunk.length} exceeds 140`,
+        headerRegex.test(chunk),
+        `chunk should have compact header, got: ${chunk.slice(0, 10)}`,
+      );
+      // Extract payload after header and check it's <= max_chunk_size
+      const match = chunk.match(/^[a-zA-Z0-9]{4}G\d{2}\d{2}:(.*)$/s);
+      assert.ok(match, "chunk should match compact header format");
+      const payload = match[1];
+      assert.ok(
+        payload.length <= 140,
+        `chunk payload length ${payload.length} exceeds 140`,
       );
     }
-    // Reassembled base64 decodes back to the original GRIB
-    const reassembled = Buffer.from(data.payload.join(""), "base64");
+    // Reassembled base64 (headers stripped) decodes back to the original GRIB
+    const payloads = data.payload.map((chunk) => {
+      const match = chunk.match(/^[a-zA-Z0-9]{4}G\d{2}\d{2}:(.*)$/s);
+      return match ? match[1] : "";
+    });
+    const reassembled = Buffer.from(payloads.join(""), "base64");
     assert.strictEqual(
       reassembled.subarray(0, 4).toString("ascii"),
       "GRIB",
@@ -135,8 +148,12 @@ describe("GribChunker", () => {
     assert.ok(data, "should emit on out");
     assert.ok(Array.isArray(data.payload));
     assert.ok(data.payload.length > 1);
+    const headerRegex = /^[a-zA-Z0-9]{4}G\d{2}\d{2}:/;
     for (const chunk of data.payload) {
-      assert.ok(chunk.length <= 80);
+      const match = chunk.match(headerRegex);
+      assert.ok(match, "chunk should have compact header format");
+      const payload = chunk.replace(headerRegex, "");
+      assert.ok(payload.length <= 80);
     }
   });
 
@@ -167,10 +184,13 @@ describe("GribChunker", () => {
 
     const { data } = await runScenario({ msg });
     assert.ok(data, "should emit on out");
-    assert.ok(data.errors?.length, "should have an error");
+    assert.ok(data.failed || data.errors?.length, "should have an error");
+    const errorMsg = data.failed
+      ? data.errors?.[0]?.message || ""
+      : data.errors?.[0]?.message || "";
     assert.ok(
-      data.errors.some((e) => e.message.includes("No GRIB data")),
-      "should report missing GRIB data",
+      errorMsg.includes("No GRIB data"),
+      `should report missing GRIB data, got: ${errorMsg}`,
     );
   });
 
@@ -193,14 +213,12 @@ describe("GribChunker", () => {
 
     const { data } = await runScenario({ msg });
     assert.ok(data, "should emit on out");
-    // Worst-case envelope header for double-digit chunk counts:
-    // `msg 12/12:grib:rXXXXXX\n` = 23 chars.
-    const maxHeader = 23;
+    // Compact header is 10 chars: [ID:4][G][Index:2][Total:2]:
+    // No external envelope - chunks are sent directly
     for (const chunk of data.payload) {
       assert.ok(
-        chunk.length + maxHeader <= 120,
-        `default chunk ${chunk.length} + ${maxHeader}-char header = ` +
-          `${chunk.length + maxHeader} chars exceeds Garmin's ~120-char budget`,
+        chunk.length <= 120,
+        `chunk ${chunk.length} chars should be under Garmin's ~120-char budget (header included)`,
       );
     }
   });

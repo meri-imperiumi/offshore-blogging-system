@@ -68,7 +68,7 @@ class DacarAuthorizer extends Component {
 
     // Check for failed messages
     if (failed(msg)) {
-      return output.sendDone(msg);
+      return output.sendDone({ denied: msg });
     }
 
     // Initialize database if needed
@@ -79,7 +79,7 @@ class DacarAuthorizer extends Component {
 
     // If no permission configured, deny
     if (!this.currentPermission) {
-      return this.deny(msg, "No permission configured");
+      return this.deny(msg, "No permission configured", output);
     }
 
     // Purge expired tuples and tombstones
@@ -94,7 +94,7 @@ class DacarAuthorizer extends Component {
         "execute",
       );
       if (tombstone) {
-        return this.deny(msg, "Access revoked");
+        return this.deny(msg, "Access revoked", output);
       }
 
       // Check for valid tuple
@@ -106,22 +106,26 @@ class DacarAuthorizer extends Component {
 
       if (tuples && tuples.length > 0) {
         // Valid tuple found - allow access
-        return output.sendDone(msg);
+        return output.sendDone({ out: msg });
       }
 
       // No valid tuple - deny access
-      return this.deny(msg, `Not authorized for ${this.currentPermission}`);
+      return this.deny(
+        msg,
+        `Not authorized for ${this.currentPermission}`,
+        output,
+      );
     } catch (err) {
       // On database error, deny for safety
-      return this.deny(msg, `Authorization error: ${err.message}`);
+      return this.deny(msg, `Authorization error: ${err.message}`, output);
     }
   }
 
-  deny(msg, reason) {
+  deny(msg, reason, output) {
     fail(msg, new Error(reason));
     msg.intent = "NOTIFY";
     msg.payload = `Access denied: ${reason}`;
-    return output.send({ denied: msg });
+    return output.sendDone({ denied: msg });
   }
 
   shutdown() {

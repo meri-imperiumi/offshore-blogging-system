@@ -35,13 +35,27 @@ class GribChunker extends Component {
       },
     });
 
-    // 96 base64 chars + ~23-char envelope header = ~119 chars total,
+    // 96 base64 chars + ~10-char compact header = ~106 chars total,
     // safely under Garmin's 120-char reliable budget. Both reference
     // implementations (references/GRIB-via-inReach,
     // references/MarineGRIB-InReach-Transmitter) independently discovered
     // that messages get truncated around the 130-140 char mark and capped
     // at 120. See references/garmin-character-counts.txt.
+    // With the new compact 10-byte header, we gain ~12 chars of payload space.
     this.maxChunkSize = 96;
+  }
+
+  /**
+   * Generate a 4-char Base62 transmission ID
+   */
+  generateTransmissionId() {
+    const chars =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let id = "";
+    for (let i = 0; i < 4; i++) {
+      id += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return id;
   }
 
   handle(input, output) {
@@ -78,22 +92,28 @@ class GribChunker extends Component {
       // Base64 encode for transmission
       const base64Data = data.toString("base64");
 
-      // Chunk the base64 string. Each chunk will be wrapped by InReachSender
-      // in a `msg i/total:grib:<id>\n` envelope (~21-23 chars), so the chunk
-      // size must be small enough that header + data stays under Garmin's
-      // ~120-char truncation threshold (see this.maxChunkSize note above).
+      // Generate 4-char Base62 transmission ID
+      const transmissionId = this.generateTransmissionId();
+
+      // Calculate chunk count
+      const totalChunks = Math.ceil(base64Data.length / this.maxChunkSize);
+
+      // Build compact header chunks: [ID:4][Type:1][Index:2][Total:2]:[Payload]
+      // For downlink GRIBs, no Meta field (4 bytes saved)
       const chunks = [];
-      for (let i = 0; i < base64Data.length; i += this.maxChunkSize) {
-        chunks.push(base64Data.slice(i, i + this.maxChunkSize));
+      for (let i = 0; i < totalChunks; i++) {
+        const index = i + 1; // 1-based
+        const piece = base64Data.slice(
+          i * this.maxChunkSize,
+          (i + 1) * this.maxChunkSize,
+        );
+        const header = `${transmissionId}G${String(index).padStart(2, "0")}${String(totalChunks).padStart(2, "0")}:`;
+        chunks.push(header + piece);
       }
 
       // Update message with chunked payload
       msg.payload = chunks;
-      // Label the partType so InReachSender wraps each chunk in a
-      // `msg i/total:grib:<transmissionId>` envelope. Without this the
-      // sender falls back to partType 'text' (it checks msg.partType
-      // before msg.intent), and the boat's web UI couldn't tell GRIB
-      // chunks apart from text replies.
+      msg.transmissionId = transmissionId;
       msg.partType = "grib";
 
       return output.sendDone(msg);

@@ -4,3 +4,4 @@ flowhub.json
 fbp.json
 .env
 config/devices.json
+cloud/errors.log

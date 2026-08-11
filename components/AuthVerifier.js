@@ -1,4 +1,5 @@
 const { Component, fail } = require("noflo-assembly");
+const DatabaseHelper = require("../lib/DbHelper");
 
 /**
  * AuthVerifier - Detects transport type and maps sender to Reticulum Identity Hash
@@ -21,6 +22,13 @@ class AuthVerifier extends Component {
           datatype: "object",
           description: "Email message to verify",
         },
+        dbpath: {
+          datatype: "string",
+          description:
+            "Database path (default: :memory:). The cloud graph shares a file DB so device registrations persist.",
+          control: true,
+          required: false,
+        },
       },
       outPorts: {
         out: {
@@ -29,9 +37,23 @@ class AuthVerifier extends Component {
         },
       },
     });
+
+    // Lazily initialized from `dbpath` on first message that needs a device
+    // lookup. The runners instead inject a pre-populated `this.db` instance
+    // post-start (`network.getNode('Verifier').component.db = db`); that path
+    // still works — if `this.db` is already set, dbpath is ignored.
+    this.db = null;
+    this.dbPath = ":memory:";
   }
 
   handle(input, output) {
+    // Read the DB path control port (buffered from an IIP). The DB itself is
+    // created lazily in lookupInReachDevice(), so Saildocs/Winlink messages
+    // (which never look up a device) don't pay for a connection.
+    if (input.hasData("dbpath")) {
+      this.dbPath = input.getData("dbpath");
+    }
+
     if (!input.hasData("in")) {
       return;
     }
@@ -217,12 +239,24 @@ class AuthVerifier extends Component {
     // Check Dacar tuples (future)
     // TODO: Implement Dacar lookup
 
-    // Check SQLite database
+    // Check SQLite database. Lazily open one from the configured dbpath so the
+    // graph is self-contained (no post-start property injection needed).
+    if (!this.db && this.dbPath) {
+      this.db = new DatabaseHelper(this.dbPath);
+      this.db.initialize();
+    }
     if (this.db) {
       return this.db.getInReachDevice(deviceId);
     }
 
     return null;
+  }
+
+  shutdown() {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
   }
 
   /**

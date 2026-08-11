@@ -97,22 +97,19 @@ class InReachReceiver extends Component {
       return output.sendDone(msg);
     }
 
-    // Convert to MessageReassembler format:
-    // msg <idx>/<total>:<partType>:<transmissionId>\n<payload>
-    msg.payload = `msg ${chunk.chunkIndex}/${chunk.totalChunks}:${chunk.partType}:${chunk.transmissionId}\n${chunk.payload}`;
-
-    // A lo-fi chunked InReach message is a blog post (weather requests go as
-    // plain text, never in this format). Tag it so ParserRouter routes the
-    // reassembled part into the blog pipeline.
+    // With the new compact header protocol, the blog chunks already use the
+    // unified format. No conversion needed - just set the intent for routing.
+    msg.payload = chunk.fullLine;
     msg.intent = "BLOG";
 
     return output.sendDone(msg);
   }
 
   /**
-   * Parse a single line of lo-fi format.
+   * Parse a single line of the unified compact header format.
    *
-   * Format: <postid:4><type:1><idx:2><total:2><crc:4>:<base64 data>
+   * Format: [ID:4][Type:1][Index:2][Total:2][Meta:4 optional]:[Payload]
+   * Example: "0715T0205687c:Rg8DqgD9wwcm" (blog post with CRC as meta)
    *
    * @param {string} line - Input line from email body
    * @returns {Object|null} Parsed chunk object or null if invalid
@@ -120,35 +117,28 @@ class InReachReceiver extends Component {
   parseLoFi(line) {
     if (!line) return null;
 
-    const colonIndex = line.indexOf(":");
-    if (colonIndex === -1) {
+    // Unified compact header: [ID:4][Type:1][Index:2][Total:2][Meta:4?]:[Payload]
+    const match = line.match(
+      /^([a-zA-Z0-9]{4})([TI])(\d{2})(\d{2})([0-9a-fA-F]{4})?:(.*)$/s,
+    );
+    if (!match) {
       return null;
     }
 
-    const header = line.slice(0, colonIndex);
-    if (header.length !== 13) {
-      return null;
-    }
+    const transmissionId = match[1];
+    const type = match[2]; // T or I for blog posts
+    const chunkIndex = parseInt(match[3], 10);
+    const totalChunks = parseInt(match[4], 10);
+    const crcHex = match[5]; // Optional 4-char CRC
+    const payload = match[6];
 
-    // Validate header format: index 4 must be T or I (part type)
-    const type = header[4];
-    if (type !== "T" && type !== "I") {
+    if (chunkIndex < 1 || chunkIndex > 99) {
       return null;
     }
-
-    const postid = header.slice(0, 4);
-    const idx = parseInt(header.slice(5, 7), 10);
-    const total = parseInt(header.slice(7, 9), 10);
-    const crcHex = header.slice(9, 13);
-    const payload = line.slice(colonIndex + 1);
-
-    if (Number.isNaN(idx) || idx < 1) {
+    if (totalChunks < 1 || totalChunks > 99) {
       return null;
     }
-    if (Number.isNaN(total) || total < 1) {
-      return null;
-    }
-    if (!/^[0-9A-Fa-f]{4}$/.test(crcHex)) {
+    if (crcHex && !/^[0-9A-Fa-f]{4}$/.test(crcHex)) {
       return null;
     }
     if (!payload || payload.length === 0) {
@@ -156,12 +146,13 @@ class InReachReceiver extends Component {
     }
 
     return {
-      transmissionId: postid,
-      partType: type,
-      chunkIndex: idx,
-      totalChunks: total,
-      payload: payload,
-      crc: parseInt(crcHex, 16),
+      transmissionId,
+      partType: type === "T" ? "text" : "image",
+      chunkIndex,
+      totalChunks,
+      payload,
+      crc: crcHex ? parseInt(crcHex, 16) : null,
+      fullLine: line, // Carry the full line (header + payload) for MessageReassembler
     };
   }
 

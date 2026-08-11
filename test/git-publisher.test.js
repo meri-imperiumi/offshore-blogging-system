@@ -1,6 +1,8 @@
 // Tests for GitPublisher: writing a decoded blog post (markdown + watermarked
-// image) to disk. Uses a plain temp directory (no git repo), so no
-// commit/push occurs — disk writing only.
+// image) to disk. The first suite uses a plain temp directory (no git repo),
+// so no commit/push occurs — disk writing only. The "git integration" suite
+// below uses real temp git repos to exercise the stage→commit→push path and
+// idempotent re-publish.
 
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert");
@@ -8,7 +10,9 @@ const fs = require("node:fs");
 const fsp = require("node:fs").promises;
 const path = require("node:path");
 const os = require("node:os");
+const { execFile } = require("node:child_process");
 const { getComponent } = require("../components/GitPublisher.js");
+const GitHelper = require("../lib/GitHelper.js");
 const sharp = require("sharp");
 
 let tmpDir;
@@ -380,5 +384,218 @@ describe("GitPublisher", () => {
       fs.existsSync(path.join(tmpDir, "_logs", "2026-08-14-my trip.md")),
       "filename with spaces should be preserved exactly",
     );
+  });
+});
+
+// --- Git integration: stage → commit → push + idempotent re-publish ---
+// These use real temp git repos (and a bare origin) so the isInsideWorkTree()
+// branch actually runs — the suite above uses a plain dir and skips git.
+
+const gitDirs = [];
+
+function runGit(args, cwd) {
+  return new Promise((resolve, reject) => {
+    execFile("git", args, { cwd }, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr || err.message));
+      else resolve(stdout.toString().trim());
+    });
+  });
+}
+
+async function makeGitRepo() {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "obs-gitpub-git-"));
+  gitDirs.push(dir);
+  const git = new GitHelper(dir);
+  await git.init();
+  await git.exec("checkout", "-b", "main");
+  await git.exec("config", "user.email", "test@example.com");
+  await git.exec("config", "user.name", "Test");
+  await git.exec("config", "commit.gpgsign", "false");
+  return { dir, git };
+}
+
+async function makeBare() {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "obs-gitpub-bare-"));
+  gitDirs.push(dir);
+  await runGit(["init", "--bare", dir]);
+  return dir;
+}
+
+async function bareCount(bareDir) {
+  const out = await runGit(
+    ["--git-dir", bareDir, "rev-list", "--count", "main"],
+    bareDir,
+  ).catch(() => "0");
+  return parseInt(out, 10);
+}
+
+function makePost({
+  filename,
+  title,
+  postId,
+  bodyMarkdown,
+  imageBuffers = [],
+}) {
+  return {
+    errors: [],
+    identityHash: "abc",
+    replyTo: "reply",
+    channel: "inreach",
+    confidence: "medium",
+    intent: "BLOG",
+    imapUid: 42,
+    payload: {
+      filename,
+      title,
+      date: filename.slice(0, 10),
+      postId,
+      bodyMarkdown,
+      imageBuffers,
+      imageCount: imageBuffers.length,
+    },
+  };
+}
+
+describe("GitPublisher git integration", () => {
+  after(async () => {
+    await Promise.all(
+      gitDirs.map((d) => fsp.rm(d, { recursive: true, force: true })),
+    );
+  });
+
+  it("stages and commits a post to a real git repo (push=false)", async () => {
+    const { dir, git } = await makeGitRepo();
+    const component = getComponent();
+    const msg = makePost({
+      filename: "2026-08-09",
+      title: "Calm Seas",
+      postId: "0809",
+      bodyMarkdown: "A quiet day.",
+    });
+
+    const out = await runPublish(component, msg, {
+      repo_path: dir,
+      push: false,
+    });
+
+    assert.ok(out, "should emit a confirmation");
+    assert.match(out.payload, /committed/);
+    assert.ok(!out.payload.includes("pushed"), "should not push (push=false)");
+
+    // The commit message keeps its spaces — the old shell-join exec would
+    // have truncated `lofi: 0809 Calm Seas` and errored on the extra words.
+    const subject = await git.exec("log", "--format=%s");
+    assert.strictEqual(subject, "lofi: 0809 Calm Seas");
+
+    // Both the markdown and its body-referenced image are tracked.
+    const tracked = await git.exec("ls-files");
+    assert.ok(tracked.includes("_logs/2026-08-09.md"));
+  });
+
+  it("stages and commits an image whose path has parentheses", async () => {
+    // Regression: the old exec shell-joined args, so `git add 2026/whale(0).webp`
+    // broke on the parens. execFile passes the path as one literal token.
+    const { dir, git } = await makeGitRepo();
+    const img = await makeImageBuffer(90, 60);
+    const component = getComponent();
+    const msg = makePost({
+      filename: "2026-08-10",
+      title: "Whale",
+      postId: "0810",
+      bodyMarkdown: "![w](../2026/whale(0).webp)\n\nWow.",
+      imageBuffers: [img],
+    });
+
+    const out = await runPublish(component, msg, {
+      repo_path: dir,
+      push: false,
+    });
+    assert.match(out.payload, /committed/);
+
+    const tracked = await git.exec("ls-files");
+    assert.ok(
+      tracked.includes("2026/whale(0).webp"),
+      "parenthesised image path should be staged",
+    );
+  });
+
+  it("pushes to origin when push=true", async () => {
+    const { dir, git } = await makeGitRepo();
+    const bareDir = await makeBare();
+    await git.exec("remote", "add", "origin", bareDir);
+
+    const component = getComponent();
+    const msg = makePost({
+      filename: "2026-08-11",
+      title: "Pushed Post",
+      postId: "0811",
+      bodyMarkdown: "This should reach GitHub.",
+    });
+
+    const out = await runPublish(component, msg, {
+      repo_path: dir,
+      push: true,
+    });
+
+    assert.match(out.payload, /pushed to GitHub/);
+    assert.strictEqual(await bareCount(bareDir), 1);
+    // Local is up to date with the remote after the push.
+    assert.strictEqual(await git.isAheadOf("origin", "main"), false);
+  });
+
+  it("is an idempotent no-op when the same post is re-published", async () => {
+    // Duplicate delivery (e.g. IMAP re-fetch) writes identical files → no
+    // staged changes → no commit, no push. The confirmation drops the
+    // "committed"/"pushed" suffix.
+    const { dir, git } = await makeGitRepo();
+    const bareDir = await makeBare();
+    await git.exec("remote", "add", "origin", bareDir);
+
+    const post = makePost({
+      filename: "2026-08-12",
+      title: "Once Only",
+      postId: "0812",
+      bodyMarkdown: "Publish me once.",
+    });
+
+    // First publish: commits + pushes.
+    const component = getComponent();
+    const first = await runPublish(component, post, {
+      repo_path: dir,
+      push: true,
+    });
+    assert.match(first.payload, /pushed to GitHub/);
+    assert.strictEqual(await bareCount(bareDir), 1);
+    const localCommitsAfterFirst = parseInt(
+      await git.exec("rev-list", "--count", "HEAD"),
+      10,
+    );
+
+    // Second publish of the identical post: no new commit, no push.
+    const component2 = getComponent();
+    const second = await runPublish(component2, post, {
+      repo_path: dir,
+      push: true,
+    });
+    assert.ok(second, "should still emit a confirmation");
+    assert.ok(
+      !second.payload.includes("committed"),
+      "identical re-publish should not commit",
+    );
+    assert.ok(
+      !second.payload.includes("pushed"),
+      "identical re-publish should not push",
+    );
+
+    const localCommitsAfterSecond = parseInt(
+      await git.exec("rev-list", "--count", "HEAD"),
+      10,
+    );
+    assert.strictEqual(
+      localCommitsAfterSecond,
+      localCommitsAfterFirst,
+      "no new local commit",
+    );
+    assert.strictEqual(await bareCount(bareDir), 1, "no new remote commit");
   });
 });

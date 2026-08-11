@@ -932,37 +932,20 @@ class OffshoreBloggingUI {
       return;
     }
 
-    // Group blog chunks by postid-type, lo-fi chunks by transmissionId
-    const blogGroups = {};
-    const lofiGroups = {};
+    // Group chunks by transmissionId
+    const groups = {};
     this.chunks.forEach((chunk) => {
-      if (chunk.format === "lofi") {
-        const key = chunk.transmissionId;
-        if (!lofiGroups[key]) {
-          lofiGroups[key] = {
-            transmissionId: chunk.transmissionId,
-            partType: chunk.partType,
-            total: chunk.total,
-            entries: {},
-          };
-        }
-        lofiGroups[key].entries[chunk.idx] = chunk.data;
-        return;
-      }
-      // Blog format (default for backward compat)
-      const key = `${chunk.postid}-${chunk.type}`;
-      if (!blogGroups[key]) {
-        blogGroups[key] = {
-          postid: chunk.postid,
+      const key = chunk.transmissionId;
+      if (!groups[key]) {
+        groups[key] = {
+          transmissionId: chunk.transmissionId,
+          typeChar: chunk.typeChar,
           type: chunk.type,
+          total: chunk.total,
           entries: {},
         };
       }
-      blogGroups[key].entries[chunk.idx] = {
-        total: chunk.total,
-        crc: chunk.crc,
-        data: chunk.data,
-      };
+      groups[key].entries[chunk.idx] = chunk.data;
     });
 
     const resultsDiv = document.getElementById("reassembleResults");
@@ -972,7 +955,12 @@ class OffshoreBloggingUI {
     let html = "";
 
     // Reassemble blog chunks (server-side: dictionary decompression)
-    for (const [_key, group] of Object.entries(blogGroups)) {
+    for (const group of Object.values(groups)) {
+      // Only T and I types go to server for decompression
+      if (group.typeChar !== "T" && group.typeChar !== "I") {
+        continue;
+      }
+
       try {
         const response = await fetch(
           "/plugins/signalk-offshore-blogging/api/reassemble",
@@ -981,7 +969,7 @@ class OffshoreBloggingUI {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               chunks: group.entries,
-              type: group.type,
+              type: group.typeChar,
             }),
           },
         );
@@ -992,19 +980,19 @@ class OffshoreBloggingUI {
           throw new Error(data.error || "Reassembly failed");
         }
 
-        if (group.type === "T") {
+        if (group.typeChar === "T") {
           html += `
             <div class="success">
-              <h4>Post ${group.postid} (Text)</h4>
+              <h4>Blog Post ${group.transmissionId} (Text)</h4>
               <p><strong>Title:</strong> ${data.title}</p>
               <p><strong>Date:</strong> ${data.date}</p>
               <textarea class="code-block" readonly>${this.escapeHtml(data.body)}</textarea>
             </div>
           `;
-        } else if (group.type === "I") {
+        } else if (group.typeChar === "I") {
           html += `
             <div class="success">
-              <h4>Post ${group.postid} (Image)</h4>
+              <h4>Blog Post ${group.transmissionId} (Image)</h4>
               <img src="${data.image}" style="max-width: 100%; border-radius: 5px;" alt="Decoded image">
             </div>
           `;
@@ -1012,20 +1000,20 @@ class OffshoreBloggingUI {
       } catch (error) {
         html += `
           <div class="error">
-            <h4>Post ${group.postid} (${group.type === "T" ? "Text" : "Image"})</h4>
+            <h4>Blog Post ${group.transmissionId} (${group.typeChar === "T" ? "Text" : "Image"})</h4>
             <p>${this.escapeHtml(error.message)}</p>
           </div>
         `;
       }
     }
 
-    // Reassemble lo-fi chunks (client-side: base64 concat → binary → download)
-    //
-    // GRIB chunks are plain base64 slices of the original binary. No
-    // compression or dictionary is involved, so reassembly is just
-    // concatenation + atob. This runs entirely in the browser — no server
-    // round-trip, works offline.
-    for (const group of Object.values(lofiGroups)) {
+    // Reassemble non-blog chunks (client-side: base64 concat → binary → download)
+    // GRIB (G) and system (S) chunks are plain base64 slices, no decompression
+    for (const group of Object.values(groups)) {
+      if (group.typeChar === "T" || group.typeChar === "I") {
+        continue; // Already handled above
+      }
+
       const total = group.total;
 
       // Check for missing chunks
@@ -1036,9 +1024,9 @@ class OffshoreBloggingUI {
 
       if (missing.length > 0) {
         const label =
-          group.partType === "grib"
+          group.typeChar === "G"
             ? "GRIB"
-            : group.partType.charAt(0).toUpperCase() + group.partType.slice(1);
+            : group.type.charAt(0).toUpperCase() + group.type.slice(1);
         html += `
           <div class="error">
             <h4>${label} (${group.transmissionId})</h4>
@@ -1049,11 +1037,7 @@ class OffshoreBloggingUI {
       }
 
       try {
-        // Concatenate base64 chunks in order (1-based). Strip ALL
-        // whitespace first: InReach devices wrap long lines, and when the
-        // user copies/retypes the chunks, embedded newlines and spaces can
-        // survive into the pasted data. `atob` throws "string contains
-        // invalid character" on any whitespace, so we must scrub it.
+        // Concatenate base64 chunks in order (1-based)
         let base64Data = "";
         for (let i = 1; i <= total; i++) {
           base64Data += group.entries[i];
@@ -1067,7 +1051,7 @@ class OffshoreBloggingUI {
           bytes[i] = binary.charCodeAt(i);
         }
 
-        if (group.partType === "grib") {
+        if (group.typeChar === "G") {
           // Create a downloadable .grb file
           const blob = new Blob([bytes], { type: "application/octet-stream" });
           const url = URL.createObjectURL(blob);
@@ -1085,22 +1069,20 @@ class OffshoreBloggingUI {
             </div>
           `;
         } else {
-          // Generic text delivery (single-chunk notifications arrive
-          // headerless and don't go through this path, but multi-chunk
-          // text is possible)
+          // System messages or other text
           const text = new TextDecoder().decode(bytes);
           html += `
             <div class="success">
-              <h4>${group.partType} (${group.transmissionId})</h4>
+              <h4>${group.type} (${group.transmissionId})</h4>
               <textarea class="code-block" readonly>${this.escapeHtml(text)}</textarea>
             </div>
           `;
         }
       } catch (error) {
         const label =
-          group.partType === "grib"
+          group.typeChar === "G"
             ? "GRIB"
-            : group.partType.charAt(0).toUpperCase() + group.partType.slice(1);
+            : group.type.charAt(0).toUpperCase() + group.type.slice(1);
         html += `
           <div class="error">
             <h4>${label} (${group.transmissionId})</h4>

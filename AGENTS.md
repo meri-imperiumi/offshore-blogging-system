@@ -8,6 +8,10 @@ When planning new work, there should always be a corresponding work document cre
 
 Work documents are public. Do not place any secrets or tokens or personally identifying information into them. Instead document how you get those things (for example when parsing an email).
 
+## NoFlo components
+
+When working on the NoFlo components, read `component-basics.md` to refresh on the concepts.
+
 ## Boundaries
 
 - ✅ **Always**: write at least smoketests for any new functionality

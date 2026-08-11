@@ -1,9 +1,77 @@
 # Cloud Server Graph for offshore blogging system
 # Routes emails from InReach/Winlink to appropriate handlers
+#
+# Deployment config (credentials, paths) is read from environment variables
+# via core/ReadEnv so the graph carries no secrets. Required env vars:
+#
+#   IMAP_USERNAME, IMAP_PASSWORD         mailbox.org IMAP creds (Listener + Acker)
+#   SMTP_USERNAME, SMTP_PASSWORD         mailbox.org SMTP creds (SmtpResponder)
+#   CLOUD_DB_PATH                         shared SQLite file for all DB components
+#   REPO_PATH                             local clone of the blog repo
+#   RNGIT_REMOTE                          boat's rngit remote URL (rns://...)
+#   INREACH_REPLY_ADDRESS                 cloud address shown to InReach recipients
+#   ALERT_ADDRESS                         operator address for unrecoverable alerts
+#   LOG_PATH                              ErrorLogger log file
+#
+# Provider identity (mailbox.org) is fixed by SPEC.md and wired as literals.
+# Timer intervals: NackTimer 15m, RngitTimer 6h.
+
+# 0. Deployment config via environment (fan out to the components that need each)
+'IMAP_USERNAME' -> KEY ImapUserEnv(core/ReadEnv)
+ImapUserEnv OUT -> USERNAME Listener
+ImapUserEnv OUT -> USERNAME ImapAcker
+
+'IMAP_PASSWORD' -> KEY ImapPassEnv(core/ReadEnv)
+ImapPassEnv OUT -> PASSWORD Listener
+ImapPassEnv OUT -> PASSWORD ImapAcker
+
+'SMTP_USERNAME' -> KEY SmtpUserEnv(core/ReadEnv)
+SmtpUserEnv OUT -> SMTP_USER SmtpResponder
+
+'SMTP_PASSWORD' -> KEY SmtpPassEnv(core/ReadEnv)
+SmtpPassEnv OUT -> SMTP_PASS SmtpResponder
+
+'CLOUD_DB_PATH' -> KEY DbEnv(core/ReadEnv)
+DbEnv OUT -> DBPATH Verifier
+DbEnv OUT -> DBPATH BlogAuth
+DbEnv OUT -> DBPATH GribAuth
+DbEnv OUT -> DBPATH SysAuth
+DbEnv OUT -> DBPATH GribFetcher
+DbEnv OUT -> DBPATH Gate
+DbEnv OUT -> DBPATH Reassembler
+DbEnv OUT -> DBPATH SaildocsMatcher
+DbEnv OUT -> DBPATH StatusBuilder
+
+'REPO_PATH' -> KEY RepoEnv(core/ReadEnv)
+RepoEnv OUT -> REPO_PATH GitPublisher
+RepoEnv OUT -> REPO_PATH RngitSyncer
+RepoEnv OUT -> REPO_PATH GithubPusher
+
+'RNGIT_REMOTE' -> KEY RngitRemoteEnv(core/ReadEnv)
+RngitRemoteEnv OUT -> RNGIT_REMOTE RngitSyncer
+
+'INREACH_REPLY_ADDRESS' -> KEY InReachReplyEnv(core/ReadEnv)
+InReachReplyEnv OUT -> REPLYADDRESS InReachSender
+
+'ALERT_ADDRESS' -> KEY AlertEnv(core/ReadEnv)
+AlertEnv OUT -> ALERTADDRESS AlertComposer
+
+'LOG_PATH' -> KEY LogEnv(core/ReadEnv)
+LogEnv OUT -> LOGPATH ErrorLogger
 
 # 1. IMAP Ingestion & Authentication
-'imap.mailbox.org' -> HOST Listener(ImapFetcher)
+# PollTimer drives a one-shot fetch cycle (open, fetch unseen, close) every
+# 60s. The runners wire the same RunInterval→Fetcher.in trigger; the
+# production graph previously had none, so it never polled.
+'start' -> START PollTimer(core/RunInterval)
+60000 -> INTERVAL PollTimer
+PollTimer OUT -> IN Listener(ImapFetcher)
+'imap.mailbox.org' -> HOST Listener
 '993' -> PORT Listener
+# ImapAcker needs the same IMAP host/port as the fetcher (it connects to
+# mark messages seen after the reply is sent).
+'imap.mailbox.org' -> HOST ImapAcker(ImapAcker)
+'993' -> PORT ImapAcker
 Listener OUT -> IN Verifier(AuthVerifier)
 
 # 1b. Parse InReach lo-fi chunk headers before reassembly. (Winlink
@@ -12,7 +80,10 @@ Listener OUT -> IN Verifier(AuthVerifier)
 Verifier OUT -> IN Receiver(InReachReceiver)
 
 # 2. Upstream Reassembly (Stateful Buffer & NACK engine)
-'15m' -> INTERVAL NackTimer(core/Ticker)
+# core/RunInterval (NOT core/Ticker, which doesn't exist) fires every 15m,
+# driving MessageReassembler's CHECK port to NACK missing chunks.
+'start' -> START NackTimer(core/RunInterval)
+900000 -> INTERVAL NackTimer
 NackTimer OUT -> CHECK Reassembler(MessageReassembler)
 Receiver OUT -> IN Reassembler
 
@@ -104,7 +175,11 @@ InReachSender ERROR -> IN AlertComposer(AlertComposer)
 AlertComposer OUT -> IN SmtpResponder
 
 # 10. Periodic Hi-Fi Sync (boat repo sync + GitHub push)
-'6h' -> INTERVAL RngitTimer(core/Ticker)
+# core/RunInterval fires every 6h to sync hi-fi assets from the boat's rngit
+# repo and push the result to GitHub. RngitSyncer merges with -X theirs so
+# hi-fi overrides lo-fi; GithubPusher pushes only when local is ahead.
+'start' -> START RngitTimer(core/RunInterval)
+21600000 -> INTERVAL RngitTimer
 RngitTimer OUT -> IN RngitSyncer(RngitSyncer)
 RngitSyncer OUT -> IN GithubPusher(GithubPusher)
 RngitSyncer ERROR -> IN ErrorLogger

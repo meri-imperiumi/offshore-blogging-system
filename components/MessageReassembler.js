@@ -143,19 +143,42 @@ class MessageReassembler extends Component {
 
   /**
    * Parse chunk headers from payload
-   * Format: "msg <part>/<total>:<partType>:<transmissionId>\n<payload>"
+   *
+   * Unified Compact Header Protocol:
+   * Format: "[ID:4][Type:1][Index:2][Total:2][Meta:4 optional]:[Payload]"
+   * Example: "rqnnG0312:payload..." (downlink GRIB, no meta)
+   *          "0715T0205687c:payload..." (uplink blog, with 4-byte CRC as meta)
+   *
+   * @param {string} payload - Raw payload from email
+   * @returns {Object|null} Parsed headers or null if no match
    */
   parseChunkHeaders(payload) {
-    const match = payload.match(/^msg\s+(\d+)\/(\d+):(\w+):(\w+)\n/);
+    // Unified compact header: [ID:4][Type:1][Index:2][Total:2][Meta:4?]:[Payload]
+    const match = payload.match(
+      /^([a-zA-Z0-9]{4})([A-Za-z])(\d{2})(\d{2})([0-9a-fA-F]{4})?:(.*)$/s,
+    );
     if (!match) {
       return null;
     }
 
+    const transmissionId = match[1];
+    const typeChar = match[2].toUpperCase();
+    const chunkIndex = parseInt(match[3], 10);
+    const totalChunks = parseInt(match[4], 10);
+    const metadata = match[5]; // May be undefined (downlink has no meta)
+    const dataPayload = match[6];
+
+    // Map typeChar to full partType string for DB compatibility
+    const typeMap = { T: "text", I: "image", G: "grib", S: "sys" };
+    const partType = typeMap[typeChar] || typeChar.toLowerCase();
+
     return {
-      chunk: parseInt(match[1], 10),
-      total: parseInt(match[2], 10),
-      partType: match[3],
-      transmissionId: match[4],
+      chunk: chunkIndex,
+      total: totalChunks,
+      partType,
+      transmissionId,
+      metadata, // Carries CRC16 on uplink, undefined on downlink
+      payload: dataPayload,
     };
   }
 
@@ -199,7 +222,9 @@ class MessageReassembler extends Component {
    * Buffer a chunk to SQLite
    */
   bufferChunk(msg, headers) {
-    const payloadOnly = msg.payload.replace(/^msg\s+\d+\/\d+:\w+:\w+\n/, "");
+    // Payload already extracted by parseChunkHeaders for unified format
+    const payloadOnly = headers.payload;
+
     this.db.saveBufferChunk(
       msg.identityHash,
       headers.transmissionId,

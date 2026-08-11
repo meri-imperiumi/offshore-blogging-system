@@ -29,6 +29,33 @@ describe("cloud-server.fbp", () => {
     assert.ok(graph, "graph should parse");
   });
 
+  it("loads as a NoFlo network (every component resolves)", async () => {
+    // Structural checks above skip external components (names containing '/'),
+    // so a reference to a non-existent component like `core/Ticker` would slip
+    // past them. Connecting the network actually instantiates every node — a
+    // missing component rejects here. We use `delay: true` so createNetwork
+    // does not auto-start (no IIPs sent, no IMAP polling, no DB creation).
+    assert.ok(graph, "graph must have parsed first");
+    // Load a fresh copy — createNetwork/connect may mutate the graph object,
+    // and the structural tests below still need the pristine one.
+    const networkGraph = await noflo.graph.loadFile(GRAPH_PATH);
+    const network = await noflo.createNetwork(networkGraph, {
+      subscribeGraph: false,
+      delay: true,
+    });
+    const errors = [];
+    network.on("process-error", (err) => errors.push(err));
+    await network.connect();
+    await network.stop();
+    assert.deepStrictEqual(
+      errors,
+      [],
+      `network connect produced process-errors: ${errors
+        .map((e) => e.error?.message || e.message)
+        .join(", ")}`,
+    );
+  });
+
   it("references only components that exist as files (or external packages)", () => {
     assert.ok(graph, "graph must have parsed first");
     const local = localComponentNames();

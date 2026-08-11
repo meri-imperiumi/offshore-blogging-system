@@ -65,8 +65,7 @@ class CommandRouter extends Component {
 
     // Check for failed messages
     if (failed(msg)) {
-      output.send({ missed: msg });
-      return output.sendDone();
+      return output.sendDone({ missed: msg });
     }
 
     // Parse command from payload
@@ -81,8 +80,9 @@ class CommandRouter extends Component {
         const gateId = parts[1] || null;
         msg.commandAction = verb;
         msg.gateId = gateId;
-        output.send({ out: new IP("data", msg, { index: routeIndex }) });
-        return output.sendDone();
+        return output.sendDone({
+          out: new IP("data", msg, { index: routeIndex }),
+        });
       }
     }
 
@@ -90,14 +90,14 @@ class CommandRouter extends Component {
     if (verb === "STATUS") {
       const routeIndex = this.routes.indexOf("STATUS");
       if (routeIndex !== -1) {
-        output.send({ out: new IP("data", msg, { index: routeIndex }) });
-        return output.sendDone();
+        return output.sendDone({
+          out: new IP("data", msg, { index: routeIndex }),
+        });
       }
     }
 
     // Unknown command - route to MISSED
-    output.send({ missed: msg });
-    return output.sendDone();
+    return output.sendDone({ missed: msg });
   }
 }
 

@@ -266,7 +266,7 @@ describe("InReachSender component", () => {
     const { client, sends } = makeMockClient();
     senderModule.di.createClient = () => client;
     // Pin the transmission id so the envelope assertions are deterministic.
-    senderModule.di.generateTransmissionId = () => "TID123";
+    senderModule.di.generateTransmissionId = () => "TID1";
 
     const timestamps = [];
     const origSend = client.send.bind(client);
@@ -292,11 +292,11 @@ describe("InReachSender component", () => {
 
     assert.ok(received);
     assert.strictEqual(sends.length, 3);
-    // Multi-chunk payloads are wrapped in the sequence envelope the boat's
-    // MessageReassembler expects (1-based index, partType, transmissionId).
-    assert.strictEqual(sends[0].message, "msg 1/3:text:TID123\nc1");
-    assert.strictEqual(sends[1].message, "msg 2/3:text:TID123\nc2");
-    assert.strictEqual(sends[2].message, "msg 3/3:text:TID123\nc3");
+    // Multi-chunk payloads are wrapped in the compact header format:
+    // [ID:4][Type:1][Index:2][Total:2]:[Payload]
+    assert.strictEqual(sends[0].message, "TID1T0103:c1");
+    assert.strictEqual(sends[1].message, "TID1T0203:c2");
+    assert.strictEqual(sends[2].message, "TID1T0303:c3");
     // Two inter-chunk gaps, each ~>= 80ms with delayms=100.
     const gaps = [timestamps[1] - timestamps[0], timestamps[2] - timestamps[1]];
     assert.ok(gaps[0] >= 80, `gap0 too small: ${gaps[0]}`);
@@ -339,14 +339,14 @@ describe("InReachSender component", () => {
     assert.match(err.message, /chunk 2\/3/);
     // Only the first chunk should have been transmitted successfully.
     assert.strictEqual(sends.length, 1);
-    // First chunk of a multi-chunk payload is wrapped in the envelope.
-    assert.match(sends[0].message, /^msg 1\/3:text:\w+\nc1$/);
+    // First chunk of a multi-chunk payload is wrapped in compact header.
+    assert.match(sends[0].message, /^[a-zA-Z0-9]{4}T0103:c1$/);
   });
 
-  it("wraps multi-chunk payloads in an envelope the boat can reassemble", async () => {
+  it("wraps multi-chunk payloads in compact headers the boat can reassemble", async () => {
     // Pin the id so the produced envelopes are byte-exact and can be
     // checked against the boat's actual MessageReassembler header regex.
-    senderModule.di.generateTransmissionId = () => "ABC789";
+    senderModule.di.generateTransmissionId = () => "ABC7";
     const { client, sends } = makeMockClient();
     senderModule.di.createClient = () => client;
 
@@ -366,24 +366,24 @@ describe("InReachSender component", () => {
     });
 
     // The boat's MessageReassembler.parseChunkHeaders uses this exact regex
-    // (1-based index, \w+ partType, \w+ transmissionId). If the sender ever
-    // drifts from it, multi-chunk delivery silently breaks on the boat side.
-    const headerRe = /^msg\s+(\d+)\/(\d+):(\w+):(\w+)\n/;
+    // (Unified Compact Header Protocol). If the sender ever drifts from it,
+    // multi-chunk delivery silently breaks on the boat side.
+    const headerRe = /^([a-zA-Z0-9]{4})([A-Za-z])(\d{2})(\d{2}):(.*)$/s;
     const parsed = sends.map((s) => {
       const m = s.message.match(headerRe);
-      assert.ok(m, `chunk not in envelope: ${JSON.stringify(s.message)}`);
+      assert.ok(m, `chunk not in compact header: ${JSON.stringify(s.message)}`);
       return {
-        chunk: parseInt(m[1], 10),
-        total: parseInt(m[2], 10),
-        partType: m[3],
-        transmissionId: m[4],
-        body: s.message.slice(m[0].length),
+        transmissionId: m[1],
+        typeChar: m[2].toUpperCase(),
+        chunk: parseInt(m[3], 10),
+        total: parseInt(m[4], 10),
+        body: m[5],
       };
     });
     assert.deepStrictEqual(
       parsed.map((p) => p.body),
       chunks,
-      "envelope must not corrupt the payload body",
+      "compact header must not corrupt the payload body",
     );
     assert.deepStrictEqual(
       parsed.map((p) => p.chunk),
@@ -392,19 +392,19 @@ describe("InReachSender component", () => {
     );
     assert.strictEqual(parsed[0].total, 2);
     assert.ok(
-      parsed.every((p) => p.transmissionId === "ABC789"),
+      parsed.every((p) => p.transmissionId === "ABC7"),
       "all chunks of a sequence share one transmissionId",
     );
     assert.ok(
-      parsed.every((p) => p.partType === "text"),
-      "default partType is 'text'",
+      parsed.every((p) => p.typeChar === "T"),
+      "default typeChar is 'T' (text)",
     );
   });
 
-  it("labels GRIB deliveries with the 'grib' partType", async () => {
+  it("labels GRIB deliveries with the 'G' type character", async () => {
     const { client, sends } = makeMockClient();
     senderModule.di.createClient = () => client;
-    senderModule.di.generateTransmissionId = () => "G1";
+    senderModule.di.generateTransmissionId = () => "G1id";
 
     await runScenario({
       client,
@@ -420,8 +420,9 @@ describe("InReachSender component", () => {
       },
     });
 
-    assert.match(sends[0].message, /^msg 1\/2:grib:G1\n/);
-    assert.match(sends[1].message, /^msg 2\/2:grib:G1\n/);
+    // Compact header: [ID:4][G][Index:2][Total:2]:[Payload]
+    assert.match(sends[0].message, /^G1idG0102:Z3JpYjE=$/);
+    assert.match(sends[1].message, /^G1idG0202:Z3JpYjI=$/);
   });
 
   it("does not envelope a single-chunk payload", async () => {

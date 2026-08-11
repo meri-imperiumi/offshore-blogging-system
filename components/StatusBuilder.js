@@ -12,6 +12,38 @@ const di = {
 };
 
 /**
+ * Generate a 4-char Base62 transmission ID
+ */
+function generateTransmissionId() {
+  const chars =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let id = "";
+  for (let i = 0; i < 4; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+}
+
+/**
+ * Chunk a large status string using the compact header format
+ * Format: [ID:4][Type:1][Index:2][Total:2]:[Payload]
+ */
+function chunkStatus(statusText, maxChunkSize = 100) {
+  const chunks = [];
+  const transmissionId = generateTransmissionId();
+  const totalChunks = Math.ceil(statusText.length / maxChunkSize);
+
+  for (let i = 0; i < totalChunks; i++) {
+    const index = i + 1; // 1-based
+    const piece = statusText.slice(i * maxChunkSize, (i + 1) * maxChunkSize);
+    const header = `${transmissionId}S${String(index).padStart(2, "0")}${String(totalChunks).padStart(2, "0")}:`;
+    chunks.push(header + piece);
+  }
+
+  return chunks;
+}
+
+/**
  * StatusBuilder - Queries database tables and formats status string
  *
  * Logic:
@@ -99,9 +131,20 @@ class StatusBuilder extends Component {
         `  Pending Saildocs: ${pendingSaildocs}`,
       ];
 
+      const statusText = statusLines.join("\n");
+
       // Update message to NOTIFY intent
       msg.intent = "NOTIFY";
-      msg.payload = statusLines.join("\n");
+
+      // If status is large (>120 chars to avoid chunking typical statuses), chunk it
+      // using compact header format
+      if (statusText.length > 120) {
+        msg.payload = chunkStatus(statusText, 100);
+        msg.partType = "sys";
+        msg.transmissionId = generateTransmissionId();
+      } else {
+        msg.payload = statusText;
+      }
 
       return output.sendDone(msg);
     } catch (_err) {

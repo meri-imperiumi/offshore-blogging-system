@@ -37,7 +37,7 @@ function runScenario({ msg, port = "out", timeout = 1500 }) {
 describe("InReachReceiver", () => {
   // --- lo-fi chunk parsing (existing behavior) ---
 
-  it("parses a lo-fi chunk and sets intent BLOG", async () => {
+  it("parses a compact header chunk and sets intent BLOG", async () => {
     const msg = {
       errors: [],
       identityHash: "dev1",
@@ -49,10 +49,10 @@ describe("InReachReceiver", () => {
     const { data } = await runScenario({ msg });
     assert.ok(data, "should emit on out");
     assert.strictEqual(data.intent, "BLOG");
-    assert.match(
+    assert.strictEqual(
       data.payload,
-      /^msg 1\/4:T:0805\nRg8DqgD9wwcm$/,
-      "payload should be converted to MessageReassembler format",
+      "0805T01047F16:Rg8DqgD9wwcm",
+      "payload should use unified compact header format",
     );
   });
 
