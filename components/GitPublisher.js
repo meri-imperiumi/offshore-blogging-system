@@ -21,9 +21,12 @@ const sharp = require("sharp");
  *   writing (SPEC.md: "so a viewer never mistakes a blurry placeholder for
  *   the final photo").
  * - Writes the markdown and watermarked image(s).
- * - If the target is a git work tree: stages, commits (`lofi: <postId>
- *   <title>`), and pushes (unless the `push` control is false). A non-repo
- *   directory just receives the files (useful for test runners).
+ * - If the target is a git work tree: pulls the latest from the configured
+ *   remote first (so we're working on the current repo state — the boat
+ *   pushes hi-fi replacements for earlier posts to GitHub via `rngit mirror` /
+ *   backup.sh), then stages, commits (`lofi: <postId> <title>`), and pushes
+ *   (unless the `push` control is false). A non-repo directory just receives
+ *   the files (useful for test runners).
  * - Emits a confirmation IP for ReplyDispatcher / BlogAckBuilder.
  */
 class GitPublisher extends Component {
@@ -76,11 +79,6 @@ class GitPublisher extends Component {
           description: "Confirmation message",
         },
       },
-      validates: {
-        "payload.filename": "ok",
-        "payload.postId": "ok",
-        "payload.title": "ok",
-      },
     });
 
     this.repoPath = null;
@@ -131,6 +129,18 @@ class GitPublisher extends Component {
 
     const blogData = msg.payload;
 
+    // Validate required fields with a clear, operator-readable message. We
+    // don't use noflo-assembly `validates` here because its generic "X is
+    // false or empty" errors are less actionable, and the tests assert the
+    // specific "missing filename" wording.
+    if (!blogData?.filename || !blogData?.postId || !blogData.title) {
+      fail(
+        msg,
+        new Error("Invalid blog post data (missing filename/postId/title)"),
+      );
+      return output.sendDone(msg);
+    }
+
     // Guard against path traversal: the filename is transmitted data, so a
     // spoofed sender could try "../etc/passwd". Reject any filename that
     // contains path separators or parent-directory references.
@@ -149,6 +159,22 @@ class GitPublisher extends Component {
     try {
       const git = new GitHelper(this.repoPath);
       const isRepo = await git.isInsideWorkTree();
+
+      // Pull latest from the configured remote before writing, so we're
+      // working on the current repo state — the boat pushes hi-fi
+      // replacements for earlier posts to GitHub (via `rngit mirror` /
+      // backup.sh) and we need them in local HEAD before adding a new lo-fi
+      // post, or our push would be rejected as non-fast-forward. Best-effort:
+      // a fresh repo with no remote ref yet, or an offline window, just means
+      // we write against local HEAD and the push below reconciles. Skipped in
+      // local-only (push=false) mode — there's no remote to pull from there.
+      if (isRepo && this.push) {
+        try {
+          await git.pull(this.githubRemote, this.branch);
+        } catch {
+          // Remote not present yet (first publish) or offline — proceed.
+        }
+      }
 
       // --- Markdown ---
       const markdownPath = this.computeMarkdownPath(blogData);

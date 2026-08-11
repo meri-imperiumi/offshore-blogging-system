@@ -15,8 +15,10 @@ class BlogAckBuilder extends Component {
     super({
       description:
         "Builds a short InReach confirmation reply after blog post decoding",
+      // filename is intentionally NOT validated: relay() substitutes
+      // "(unknown)" so a confirmation is always sent even if the filename
+      // was lost in transit (see "handles a missing filename gracefully").
       validates: {
-        "payload.filename": "ok",
         totalChunks: "num",
       },
     });

@@ -598,4 +598,65 @@ describe("GitPublisher git integration", () => {
     );
     assert.strictEqual(await bareCount(bareDir), 1, "no new remote commit");
   });
+
+  it("pulls from origin before writing so the lo-fi post lands on the latest state", async () => {
+    // The boat pushes hi-fi replacements to GitHub (rngit mirror / backup.sh);
+    // the cloud must pull that down before writing a new lo-fi post, or its
+    // push would be rejected as non-fast-forward. This proves GitPublisher
+    // pulls first: a commit that exists only on origin is present locally
+    // after a publish, even though GitPublisher never wrote that file itself.
+    const { dir, git } = await makeGitRepo();
+    const bareDir = await makeBare();
+    await git.exec("remote", "add", "origin", bareDir);
+
+    // Base commit on origin.
+    await fsp.writeFile(path.join(dir, "base.txt"), "base");
+    await git.add("base.txt");
+    await git.commit("base");
+    await git.push("origin", "main");
+
+    // Simulate the boat pushing a commit to origin that the cloud hasn't
+    // seen locally (the cloud's local HEAD is now behind origin).
+    const boatDir = await fsp.mkdtemp(
+      path.join(os.tmpdir(), "obs-gitpub-boat-"),
+    );
+    gitDirs.push(boatDir);
+    await runGit(["clone", "-q", "-b", "main", bareDir, boatDir]);
+    await runGit(["config", "user.email", "test@example.com"], boatDir);
+    await runGit(["config", "user.name", "Test"], boatDir);
+    await runGit(["config", "commit.gpgsign", "false"], boatDir);
+    await fsp.writeFile(path.join(boatDir, "from-boat.txt"), "hifi");
+    await runGit(["add", "from-boat.txt"], boatDir);
+    await runGit(["commit", "-m", "boat: hi-fi"], boatDir);
+    await runGit(["push", "origin", "main"], boatDir);
+
+    // Precondition: the cloud's local HEAD is behind origin.
+    assert.ok(
+      !fs.existsSync(path.join(dir, "from-boat.txt")),
+      "precondition: cloud hasn't pulled the boat's commit yet",
+    );
+
+    const component = getComponent();
+    const out = await runPublish(
+      component,
+      makePost({
+        filename: "2026-08-13",
+        title: "After Landfall",
+        postId: "0813",
+        bodyMarkdown: "Pulled before writing.",
+      }),
+      { repo_path: dir, push: true },
+    );
+
+    assert.match(out.payload, /pushed to GitHub/);
+    // The boat's commit is now in the cloud's local HEAD — GitPublisher
+    // pulled before writing, so the lo-fi post lands on top of it.
+    assert.ok(
+      fs.existsSync(path.join(dir, "from-boat.txt")),
+      "GitPublisher should have pulled the boat's commit before writing",
+    );
+    // The push succeeded (not rejected as non-fast-forward): bare now has
+    // base + boat's hi-fi + our lo-fi post.
+    assert.strictEqual(await bareCount(bareDir), 3);
+  });
 });

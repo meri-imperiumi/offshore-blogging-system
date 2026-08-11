@@ -30,9 +30,6 @@ class GribChunker extends Component {
           default: 96,
         },
       },
-      validates: {
-        payload: "ok",
-      },
     });
 
     // 96 base64 chars + ~10-char compact header = ~106 chars total,
@@ -77,7 +74,10 @@ class GribChunker extends Component {
     }
 
     try {
-      // Get binary data
+      // Payload is validated here rather than via the `validates` option so
+      // that a missing payload produces the specific "No GRIB data in
+      // payload" error (the generic "payload is false or empty" is less
+      // actionable for operators).
       let data = msg.payload;
       if (!data) {
         fail(msg, new Error("No GRIB data in payload"));

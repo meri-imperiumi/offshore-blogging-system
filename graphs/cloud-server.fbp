@@ -8,13 +8,12 @@
 #   SMTP_USERNAME, SMTP_PASSWORD         mailbox.org SMTP creds (SmtpResponder)
 #   CLOUD_DB_PATH                         shared SQLite file for all DB components
 #   REPO_PATH                             local clone of the blog repo
-#   RNGIT_REMOTE                          boat's rngit remote URL (rns://...)
 #   INREACH_REPLY_ADDRESS                 cloud address shown to InReach recipients
 #   ALERT_ADDRESS                         operator address for unrecoverable alerts
 #   LOG_PATH                              ErrorLogger log file
 #
 # Provider identity (mailbox.org) is fixed by SPEC.md and wired as literals.
-# Timer intervals: NackTimer 15m, RngitTimer 6h.
+# Timer intervals: PollTimer 60s, NackTimer 15m.
 
 # 0. Deployment config via environment (fan out to the components that need each)
 'IMAP_USERNAME' -> KEY ImapUserEnv(core/ReadEnv)
@@ -44,11 +43,10 @@ DbEnv OUT -> DBPATH StatusBuilder
 
 'REPO_PATH' -> KEY RepoEnv(core/ReadEnv)
 RepoEnv OUT -> REPO_PATH GitPublisher
-RepoEnv OUT -> REPO_PATH RngitSyncer
-RepoEnv OUT -> REPO_PATH GithubPusher
-
-'RNGIT_REMOTE' -> KEY RngitRemoteEnv(core/ReadEnv)
-RngitRemoteEnv OUT -> RNGIT_REMOTE RngitSyncer
+# Hi-fi sync happens on the boat (rngit mirror / backup.sh pushes hi-fi
+# straight to GitHub); the cloud just pulls from GitHub before writing each
+# lo-fi post and pushes the result (GitPublisher does both). No periodic
+# boat->cloud sync, no separate pusher component.
 
 'INREACH_REPLY_ADDRESS' -> KEY InReachReplyEnv(core/ReadEnv)
 InReachReplyEnv OUT -> REPLYADDRESS InReachSender
@@ -162,8 +160,8 @@ Router OUT[4] -> IN ReplyDispatcher
 ReplyDispatcher SMTP -> IN SmtpResponder(SmtpResponder)
 ReplyDispatcher INREACH -> IN InReachSender(InReachSender)
 
-# 9b. InReach failure handling: log every failure (file record, matches
-# RngitSyncer/GithubPusher pattern) AND alert the operator out-of-band for
+# 9b. InReach failure handling: log every failure (file record via
+# ErrorLogger) AND alert the operator out-of-band for
 # unrecoverable ones (dead reply channel / bad config). The alert goes via
 # SMTP through SmtpResponder, never back through InReachSender (cloud.md's
 # "not itself routed through this same component" rule). AlertComposer is
@@ -174,13 +172,9 @@ InReachSender ERROR -> IN ErrorLogger(ErrorLogger)
 InReachSender ERROR -> IN AlertComposer(AlertComposer)
 AlertComposer OUT -> IN SmtpResponder
 
-# 10. Periodic Hi-Fi Sync (boat repo sync + GitHub push)
-# core/RunInterval fires every 6h to sync hi-fi assets from the boat's rngit
-# repo and push the result to GitHub. RngitSyncer merges with -X theirs so
-# hi-fi overrides lo-fi; GithubPusher pushes only when local is ahead.
-'start' -> START RngitTimer(core/RunInterval)
-21600000 -> INTERVAL RngitTimer
-RngitTimer OUT -> IN RngitSyncer(RngitSyncer)
-RngitSyncer OUT -> IN GithubPusher(GithubPusher)
-RngitSyncer ERROR -> IN ErrorLogger
-GithubPusher ERROR -> IN ErrorLogger
+# 10. (removed) Periodic Hi-Fi Sync — no longer needed in the cloud. Hi-fi
+# assets are merged on the boat itself (rngit mirror / backup.sh pulls from
+# GitHub, writes the hi-fi files, and pushes back to GitHub) and that is
+# already implemented and running. The cloud's only git job is per-blog-post:
+# GitPublisher pulls from GitHub (latest state, incl. any hi-fi the boat
+# pushed), writes the lo-fi post, commits, and pushes — all inline, no timer.

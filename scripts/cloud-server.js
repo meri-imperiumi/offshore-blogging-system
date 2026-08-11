@@ -9,7 +9,7 @@
  *
  * Required environment variables (see cloud-server.fbp header):
  *   IMAP_USERNAME, IMAP_PASSWORD, SMTP_USERNAME, SMTP_PASSWORD,
- *   CLOUD_DB_PATH, REPO_PATH, RNGIT_REMOTE, INREACH_REPLY_ADDRESS,
+ *   CLOUD_DB_PATH, REPO_PATH, INREACH_REPLY_ADDRESS,
  *   ALERT_ADDRESS, LOG_PATH
  *
  * Optional:
@@ -33,7 +33,6 @@ const REQUIRED_ENV = [
   "SMTP_PASSWORD",
   "CLOUD_DB_PATH",
   "REPO_PATH",
-  "RNGIT_REMOTE",
   "INREACH_REPLY_ADDRESS",
   "ALERT_ADDRESS",
   "LOG_PATH",
@@ -67,9 +66,7 @@ noflo.graph
       console.log("[cloud-server] network ended");
     });
     console.log("[cloud-server] network started");
-    console.log(
-      "[cloud-server] IMAP polling every 60s; NACK sweep every 15m; hi-fi sync every 6h",
-    );
+    console.log("[cloud-server] IMAP polling every 60s; NACK sweep every 15m");
   })
   .catch((err) => {
     console.error("[cloud-server] failed to start:", err.message);

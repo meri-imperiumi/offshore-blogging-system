@@ -37,10 +37,10 @@ We additionally have a cloud VPS that can be used to automate things that requir
   - Never publish a partially/corruptly reassembled post, only a fully verified one
 - The server then writes the blog post and attachments to the git repository. This needs consistent file naming to ensure multiple email reads don't end up with duplicate posts (as well as to ensure the hi-fi version eventually overrides the files)
 - The server overlays a small watermark/banner on lo-fi images before committing (e.g. 'lo-fi preview via radio') so a viewer never mistakes a blurry placeholder for the final photo
-- The cloud server also periodically tries to sync the repository via the configured git remote(s) (works when boat has full internet) to get the hi-fi assets
-  - This needs to be done so that the hi-fi assets override the lo-fi versions (likely `-X theirs` merge strategy)
+- Before writing a lo-fi post, the cloud server pulls the latest from the configured git remote (currently GitHub) so it works on the current repo state
+- The hi-fi assets are merged on the boat itself (via `rngit mirror` / the existing backup script) and pushed to the configured git remote, overwriting the lo-fi versions — this is already implemented and running, separate from the cloud server
   - The specific transport mechanism (e.g., rngit) is an implementation detail
-- When there is new content to push, the cloud server pushes it to the configured git remote (currently GitHub)
+- When the cloud server has written new content, it commits and pushes it to the configured git remote (currently GitHub)
 - GitHub runs a CI action to convert the site to HTML using Jekyll and publishes it on Github Pages
 - Cloud server sends a confirmation message back to user telling that the blog post has been published (including post name and metadata to identify it)
 

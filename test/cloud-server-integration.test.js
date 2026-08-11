@@ -40,7 +40,6 @@ const savedEnv = {};
 const ENV_KEYS = [
   "CLOUD_DB_PATH",
   "REPO_PATH",
-  "RNGIT_REMOTE",
   "IMAP_USERNAME",
   "IMAP_PASSWORD",
   "SMTP_USERNAME",
@@ -117,7 +116,6 @@ before(async () => {
   }
   process.env.CLOUD_DB_PATH = path.join(tmpRoot, "cloud.db");
   process.env.REPO_PATH = repoDir;
-  process.env.RNGIT_REMOTE = "rns://test/boat/repo";
   process.env.IMAP_USERNAME = "u";
   process.env.IMAP_PASSWORD = "p";
   process.env.SMTP_USERNAME = "u";
