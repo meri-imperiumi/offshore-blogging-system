@@ -1,4 +1,4 @@
-const { Component, failed, fail, fork } = require("noflo-assembly");
+const { Component, fail, fork } = require("noflo-assembly");
 const InReachClient = require("../lib/InReachClient");
 
 /**
@@ -45,10 +45,6 @@ class InReachSender extends Component {
     super({
       description: "Sends chunked payloads via the Garmin InReach web endpoint",
       inPorts: {
-        in: {
-          datatype: "object",
-          description: "Assembly message with payload chunks",
-        },
         replyaddress: {
           datatype: "string",
           description:
@@ -74,6 +70,9 @@ class InReachSender extends Component {
           datatype: "object",
           description: "Failed assembly message on transmission error",
         },
+      },
+      validates: {
+        replyTo: "str",
       },
     });
 
@@ -109,8 +108,8 @@ class InReachSender extends Component {
 
     const msg = input.getData("in");
 
-    // Bypass failed messages per noflo-assembly convention
-    if (failed(msg)) {
+    // Validation is explicit for multi-route components
+    if (!this.validate(msg)) {
       return output.sendDone(msg);
     }
 
@@ -127,11 +126,8 @@ class InReachSender extends Component {
 
     // The Garmin reply URL is carried per-message in replyTo.
     const replyUrl = msg.replyTo;
-    if (
-      !replyUrl ||
-      typeof replyUrl !== "string" ||
-      !/^https?:\/\//.test(replyUrl)
-    ) {
+    // URL format validation (not covered by validates)
+    if (!/^https?:\/\//.test(replyUrl)) {
       fail(
         msg,
         new InReachClient.InReachError(

@@ -1,4 +1,4 @@
-const { Component, failed, fail } = require("noflo-assembly");
+const { Component, fail, fork } = require("noflo-assembly");
 const GitHelper = require("../lib/GitHelper");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -33,7 +33,8 @@ class GitPublisher extends Component {
       inPorts: {
         in: {
           datatype: "object",
-          description: "Assembly message with decoded blog post data",
+          description: "Assembly message with decoded blog post",
+          required: true,
         },
         repo_path: {
           datatype: "string",
@@ -75,6 +76,11 @@ class GitPublisher extends Component {
           description: "Confirmation message",
         },
       },
+      validates: {
+        "payload.filename": "ok",
+        "payload.postId": "ok",
+        "payload.title": "ok",
+      },
     });
 
     this.repoPath = null;
@@ -112,8 +118,8 @@ class GitPublisher extends Component {
 
     const msg = input.getData("in");
 
-    // Check for failed messages
-    if (failed(msg)) {
+    // Validation is explicit for multi-route components
+    if (!this.validate(msg)) {
       return output.sendDone(msg);
     }
 
@@ -124,13 +130,6 @@ class GitPublisher extends Component {
     }
 
     const blogData = msg.payload;
-    if (!blogData?.filename || !blogData?.postId || !blogData.title) {
-      fail(
-        msg,
-        new Error("Invalid blog post data (missing filename/postId/title)"),
-      );
-      return output.sendDone(msg);
-    }
 
     // Guard against path traversal: the filename is transmitted data, so a
     // spoofed sender could try "../etc/passwd". Reject any filename that
@@ -203,23 +202,20 @@ class GitPublisher extends Component {
         }
       }
 
-      const confirmMsg = {
-        errors: [],
-        identityHash: msg.identityHash,
-        replyTo: msg.replyTo,
-        channel: msg.channel,
-        confidence: msg.confidence,
-        transmissionId: blogData.postId,
-        imapUid: msg.imapUid,
-        intent: "NOTIFY",
-        payload: `Blog post "${blogData.title}" written to disk${
-          pushed ? " and pushed to GitHub" : committed ? " (committed)" : ""
-        }`,
-        notifyText: `Published: ${blogData.title}`,
-        filename: blogData.filename,
-        publishedPath: markdownPath,
-        imageCount: imageBuffers.length,
-      };
+      const confirmMsg = fork(msg, [
+        "payload",
+        "intent",
+        "notifyText",
+        "partType",
+      ]);
+      confirmMsg.intent = "NOTIFY";
+      confirmMsg.payload = `Blog post "${blogData.title}" written to disk${
+        pushed ? " and pushed to GitHub" : committed ? " (committed)" : ""
+      }`;
+      confirmMsg.notifyText = `Published: ${blogData.title}`;
+      confirmMsg.filename = blogData.filename;
+      confirmMsg.publishedPath = markdownPath;
+      confirmMsg.imageCount = imageBuffers.length;
 
       output.sendDone(confirmMsg);
     } catch (err) {

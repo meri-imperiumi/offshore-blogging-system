@@ -1,4 +1,4 @@
-const { Component, failed, fail } = require("noflo-assembly");
+const { Component, fail } = require("noflo-assembly");
 
 /**
  * GribChunker - Chunks GRIB data for transmission
@@ -15,7 +15,8 @@ class GribChunker extends Component {
       inPorts: {
         in: {
           datatype: "object",
-          description: "Assembly message with binary GRIB data",
+          description: "Assembly message with GRIB data",
+          required: true,
         },
         max_chunk_size: {
           datatype: "number",
@@ -29,11 +30,8 @@ class GribChunker extends Component {
           default: 96,
         },
       },
-      outPorts: {
-        out: {
-          datatype: "object",
-          description: "Assembly message with chunked payload array",
-        },
+      validates: {
+        payload: "ok",
       },
     });
 
@@ -59,8 +57,8 @@ class GribChunker extends Component {
 
     const msg = input.getData("in");
 
-    // Check for failed messages
-    if (failed(msg)) {
+    // Validation is explicit for multi-route components
+    if (!this.validate(msg)) {
       return output.sendDone(msg);
     }
 

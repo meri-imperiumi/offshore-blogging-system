@@ -1,4 +1,3 @@
-const { IP } = require("noflo");
 const { Component, failed, fail } = require("noflo-assembly");
 const DatabaseHelper = require("../lib/DbHelper");
 
@@ -63,15 +62,23 @@ class MessageReassembler extends Component {
   }
 
   handle(input, output) {
+    try {
+      return this.doHandle(input, output);
+    } catch (err) {
+      console.error("MessageReassembler error:", err);
+      throw err;
+    }
+  }
+
+  doHandle(input, output) {
+    console.log("MessageReassembler.doHandle called");
     // Process control ports
     if (input.hasData("dbpath")) {
       this.dbPath = input.getData("dbpath");
-      input.buffer.get("dbpath").clear();
     }
 
     if (input.hasData("ttl")) {
       this.ttl = input.getData("ttl");
-      input.buffer.get("ttl").clear();
     }
 
     // Initialize database on first use
@@ -96,7 +103,7 @@ class MessageReassembler extends Component {
 
     // Check for failed messages (pass through)
     if (failed(msg)) {
-      return output.sendDone({ out: new IP("data", msg) });
+      return output.sendDone({ out: msg });
     }
 
     // Parse chunk headers from payload
@@ -104,7 +111,8 @@ class MessageReassembler extends Component {
 
     // If no headers found, treat as complete message (pass through)
     if (!headers) {
-      return output.sendDone({ out: new IP("data", msg) });
+      console.log("MessageReassembler: no chunk headers, passing through");
+      return output.sendDone({ out: msg });
     }
 
     // Check for CANCEL command
@@ -126,7 +134,7 @@ class MessageReassembler extends Component {
       // Not complete yet - emit on `buffered` so the email can be acked
       // (its job of delivering a valid chunk is done). The reassembled
       // message will be emitted on `out` once all chunks arrive.
-      return output.sendDone({ buffered: new IP("data", msg) });
+      return output.sendDone({ buffered: msg });
     }
 
     // Sequence complete - reassemble
@@ -184,7 +192,7 @@ class MessageReassembler extends Component {
     msg.intent = "NOTIFY";
     msg.payload = `Cancelled transmission: ${cancelTransmissionId}`;
 
-    return output.sendDone({ out: new IP("data", msg) });
+    return output.sendDone(msg);
   }
 
   /**
@@ -226,7 +234,7 @@ class MessageReassembler extends Component {
       headers.partType,
     );
 
-    return output.sendDone({ out: new IP("data", msg) });
+    output.sendDone({ out: msg });
   }
 
   /**
@@ -255,7 +263,7 @@ class MessageReassembler extends Component {
 
       // Emit NACK for ReplyDispatcher
       if (output.isAttached("out")) {
-        output.send(new IP("data", nackMsg));
+        output.send({ out: nackMsg });
       }
     }
   }

@@ -1,4 +1,4 @@
-const { Component, failed } = require("noflo-assembly");
+const { Component, fork } = require("noflo-assembly");
 
 /**
  * BlogAckBuilder - Build a confirmation reply after blog post is decoded.
@@ -15,33 +15,14 @@ class BlogAckBuilder extends Component {
     super({
       description:
         "Builds a short InReach confirmation reply after blog post decoding",
-      inPorts: {
-        in: {
-          datatype: "object",
-          description: "Assembly message with decoded blog post",
-        },
-      },
-      outPorts: {
-        out: {
-          datatype: "object",
-          description: "Assembly message with confirmation reply text",
-        },
+      validates: {
+        "payload.filename": "ok",
+        totalChunks: "num",
       },
     });
   }
 
-  handle(input, output) {
-    if (!input.hasData("in")) {
-      return;
-    }
-
-    const msg = input.getData("in");
-
-    // Pass through failed messages
-    if (failed(msg)) {
-      return output.sendDone(msg);
-    }
-
+  relay(msg, output) {
     // BlogDecoder puts the decoded post in msg.payload as an object
     const post = msg.payload;
     const filename = post?.filename || "(unknown)";
@@ -54,12 +35,9 @@ class BlogAckBuilder extends Component {
     // mutating it here would overwrite the blog data object with a string
     // and make GitPublisher fail validation. Emitting a fresh object leaves
     // the original msg intact for the parallel branch.
-    const reply = {
-      ...msg,
-      errors: [],
-      payload: `Blog OK: ${filename}.md (${parts} parts)`,
-      intent: "NOTIFY",
-    };
+    const reply = fork(msg, ["payload", "intent"]);
+    reply.payload = `Blog OK: ${filename}.md (${parts} parts)`;
+    reply.intent = "NOTIFY";
 
     console.log(`[BlogAckBuilder] Building confirmation: ${reply.payload}`);
 

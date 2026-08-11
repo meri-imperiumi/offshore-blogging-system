@@ -101,43 +101,51 @@ class GithubPusher extends Component {
       // Check current branch
       const _currentBranch = await git.getCurrentBranch();
 
-      // Fetch from remote first
-      await git.pull(this.githubRemote, this.branch);
+      // Fetch from GitHub first, so a push is fast-forward and we don't get
+      // rejected if the remote has advanced (e.g. a manual edit). This is
+      // best-effort: on a fresh repo the remote branch may not exist yet, so
+      // pull errors are ignored — the push below will create the branch.
+      try {
+        await git.pull(this.githubRemote, this.branch);
+      } catch {
+        // Remote branch not present yet (first push) or offline — proceed
+        // to the ahead check; push will create the branch if needed.
+      }
 
-      // Check for new commits from boat's rngit
-      // (The pull should have merged them with -X theirs)
-      const hasChanges = await git.hasChanges();
+      // Only push when local is genuinely ahead of the remote. Previously
+      // this used hasChanges() (working-tree status), which is always false
+      // after a merge commits its result — so a push never fired. isAheadOf()
+      // counts commits in HEAD not on the remote-tracking ref.
+      const shouldPush = await git.isAheadOf(this.githubRemote, this.branch);
 
-      if (hasChanges) {
+      if (shouldPush) {
         // Push to GitHub
         await git.push(this.githubRemote, this.branch);
 
-        const confirmMsg = {
+        output.sendDone({
           errors: [],
           identityHash: "SYSTEM",
           intent: "NOTIFY",
           payload: "GitHub push completed with hi-fi assets",
-        };
-
-        output.sendDone(confirmMsg);
+        });
       } else {
-        // No changes to push - no-op
+        // No new commits from boat's rngit — no-op (avoid empty CI run)
         output.sendDone(msg);
       }
     } catch (err) {
       // Push errors should be notified
-      const errorResult = {
-        errors: [
-          {
-            message: `GitHub push failed: ${err.message}`,
-          },
-        ],
-        identityHash: "SYSTEM",
-        intent: "NOTIFY",
-        payload: `GitHub push failed: ${err.message}`,
-      };
-
-      output.send({ error: errorResult });
+      output.sendDone({
+        error: {
+          errors: [
+            {
+              message: `GitHub push failed: ${err.message}`,
+            },
+          ],
+          identityHash: "SYSTEM",
+          intent: "NOTIFY",
+          payload: `GitHub push failed: ${err.message}`,
+        },
+      });
     }
   }
 }

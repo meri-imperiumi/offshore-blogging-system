@@ -1,4 +1,4 @@
-const { Component, failed, fail } = require("noflo-assembly");
+const { Component, failed, fail, fork } = require("noflo-assembly");
 const DatabaseHelper = require("../lib/DbHelper");
 
 /**
@@ -125,16 +125,11 @@ class GribGate extends Component {
       chunks,
     );
 
-    // Build consent request notification
-    const notifyMsg = {
-      errors: [],
-      identityHash: msg.identityHash,
-      replyTo: msg.replyTo,
-      channel: msg.channel,
-      intent: "NOTIFY",
-      payload: `GRIB request requires consent: ${chunks.length} chunks (${this.maxChunks} threshold)\nSend "YES ${gateId}" to proceed or "CANCEL ${gateId}" to cancel`,
-      notifyText: `GRIB: ${chunks.length} chunks. Reply YES ${gateId} or CANCEL ${gateId}`,
-    };
+    // Build consent request notification using fork
+    const notifyMsg = fork(msg, ["payload", "intent", "notifyText"]);
+    notifyMsg.intent = "NOTIFY";
+    notifyMsg.payload = `GRIB request requires consent: ${chunks.length} chunks (${this.maxChunks} threshold)\nSend "YES ${gateId}" to proceed or "CANCEL ${gateId}" to cancel`;
+    notifyMsg.notifyText = `GRIB: ${chunks.length} chunks. Reply YES ${gateId} or CANCEL ${gateId}`;
 
     return output.send({ notify: notifyMsg });
   }
@@ -164,45 +159,30 @@ class GribGate extends Component {
         return output.sendDone(cmdMsg);
       }
 
-      // Build restored message
-      const restoredMsg = {
-        errors: [],
-        identityHash: gate.identity_hash,
-        replyTo: gate.reply_to,
-        channel: gate.channel,
-        intent: "GRIB", // Original intent
-        payload: gate.chunk_payloads,
-      };
+      // Build restored message using fork
+      const restoredMsg = fork(cmdMsg, ["payload", "intent", "notifyText"]);
+      restoredMsg.intent = "GRIB";
+      restoredMsg.payload = gate.chunk_payloads;
 
       // Delete the gate
       this.db.deleteGribGate(cmdMsg.identityHash, gateId);
 
-      // Send confirmation
-      const confirmMsg = {
-        errors: [],
-        identityHash: cmdMsg.identityHash,
-        replyTo: cmdMsg.replyTo,
-        channel: cmdMsg.channel,
-        intent: "NOTIFY",
-        payload: `Gate ${gateId} confirmed - ${gate.chunk_payloads.length} chunks will be sent`,
-        notifyText: `GRIB gate ${gateId} approved`,
-      };
+      // Send confirmation using fork
+      const confirmMsg = fork(cmdMsg, ["payload", "intent", "notifyText"]);
+      confirmMsg.intent = "NOTIFY";
+      confirmMsg.payload = `Gate ${gateId} confirmed - ${gate.chunk_payloads.length} chunks will be sent`;
+      confirmMsg.notifyText = `GRIB gate ${gateId} approved`;
 
       return output.sendDone({ out: restoredMsg, notify: confirmMsg });
     } else if (action === "CANCEL") {
       // Delete the gate
       this.db.deleteGribGate(cmdMsg.identityHash, gateId);
 
-      // Send cancellation confirmation
-      const cancelMsg = {
-        errors: [],
-        identityHash: cmdMsg.identityHash,
-        replyTo: cmdMsg.replyTo,
-        channel: cmdMsg.channel,
-        intent: "NOTIFY",
-        payload: `Gate ${gateId} cancelled - chunks discarded`,
-        notifyText: `GRIB gate ${gateId} cancelled`,
-      };
+      // Send cancellation confirmation using fork
+      const cancelMsg = fork(cmdMsg, ["payload", "intent", "notifyText"]);
+      cancelMsg.intent = "NOTIFY";
+      cancelMsg.payload = `Gate ${gateId} cancelled - chunks discarded`;
+      cancelMsg.notifyText = `GRIB gate ${gateId} cancelled`;
 
       return output.sendDone({ notify: cancelMsg });
     } else {

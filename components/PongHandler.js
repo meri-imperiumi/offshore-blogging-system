@@ -1,4 +1,4 @@
-const { Component, failed } = require("noflo-assembly");
+const { Component } = require("noflo-assembly");
 
 /**
  * PongHandler - Simple PING/PONG response handler
@@ -13,33 +13,14 @@ class PongHandler extends Component {
   constructor() {
     super({
       description: "Responds to PING with PONG for testing",
-      inPorts: {
-        in: {
-          datatype: "object",
-          description: "Assembly message with payload",
-        },
-      },
-      outPorts: {
-        out: {
-          datatype: "object",
-          description: "Assembly message with PONG response",
-        },
+      validates: {
+        channel: "str",
+        payload: "ok",
       },
     });
   }
 
-  handle(input, output) {
-    if (!input.hasData("in")) {
-      return;
-    }
-
-    const msg = input.getData("in");
-
-    // Check for failed messages
-    if (failed(msg)) {
-      return output.sendDone(msg);
-    }
-
+  relay(msg, output) {
     // Only handle InReach messages for ping-pong test
     if (msg.channel !== "inreach") {
       return output.sendDone(msg);
@@ -54,11 +35,7 @@ class PongHandler extends Component {
       // Generate PONG response
       msg.payload = "PONG";
       msg.intent = "NOTIFY";
-      // replyTo should already be set by upstream component
-      return output.sendDone(msg);
     }
-
-    // Not a PING, pass through unchanged
     return output.sendDone(msg);
   }
 }

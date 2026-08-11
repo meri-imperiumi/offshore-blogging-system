@@ -1,4 +1,3 @@
-const { IP } = require("noflo");
 const { Component, failed, fail } = require("noflo-assembly");
 
 /**
@@ -46,30 +45,30 @@ class ReplyDispatcher extends Component {
 
     // Check for failed messages
     if (failed(msg)) {
-      output.send({ error: new IP("data", msg) });
+      output.send({ error: msg });
       return output.sendDone();
     }
 
     // Validate channel is present
     if (!msg.channel) {
       fail(msg, new Error("Missing channel in reply message"));
-      output.send({ error: new IP("data", msg) });
+      output.send({ error: msg });
       return output.sendDone();
     }
 
     // Route based on channel
     switch (msg.channel) {
       case "winlink":
-        output.send({ smtp: new IP("data", msg) });
+        output.send({ smtp: msg });
         break;
 
       case "inreach":
-        output.send({ inreach: new IP("data", msg) });
+        output.send({ inreach: msg });
         break;
 
       default:
         fail(msg, new Error(`Unrecognized channel: ${msg.channel}`));
-        output.send({ error: new IP("data", msg) });
+        output.send({ error: msg });
         break;
     }
 

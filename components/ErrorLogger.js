@@ -1,6 +1,5 @@
 const { Component } = require("noflo-assembly");
 const fs = require("node:fs");
-const IP = require("noflo");
 const path = require("node:path");
 
 /**
@@ -62,7 +61,7 @@ class ErrorLogger extends Component {
           "ErrorLogger: Failed to create log directory:",
           mkdirErr.message,
         );
-        return output.sendDone();
+        return output.sendDone(msg);
       }
     }
 
@@ -71,10 +70,11 @@ class ErrorLogger extends Component {
     const identityHash = msg.identityHash || "UNKNOWN";
     const intent = msg.intent || "UNKNOWN";
     const channel = msg.channel || "UNKNOWN";
+    const payload = msg.payload || "";
 
     // Extract error details
     let errorDetails = "No error details";
-    if (msg.errors && msg.errors.length > 0) {
+    if (Array.isArray(msg.errors) && msg.errors.length > 0) {
       errorDetails = msg.errors
         .map((err) => err.message || String(err))
         .join("; ");
@@ -109,9 +109,17 @@ class ErrorLogger extends Component {
       console.error("ErrorLogger: Entry was:", logEntry);
     }
 
-    // Always resolve - this component never causes graph stalls
-    output.send(new IP("data", msg));
-    return output.sendDone();
+    // Always resolve - pass the message through on `out` so downstream
+    // (e.g. a future alert forwarder) can react. Never stalls the graph.
+    // Send only if the out port is attached.
+    if (this.outputPortIsAttached()) {
+      return output.sendDone({ out: msg });
+    }
+    return output.done();
+  }
+
+  outputPortIsAttached() {
+    return this.outPorts.out && this.outPorts.out.isAttached();
   }
 }
 

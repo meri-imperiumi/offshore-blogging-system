@@ -1,3 +1,4 @@
+const { IP } = require("noflo");
 const { Component, failed } = require("noflo-assembly");
 
 /**

@@ -12,7 +12,7 @@ Our [daily offshore routine](https://handbook.lille-oe.de/checklists/02_daily_ch
 - Blog posts are written in Markdown on personal mobile devices using Obsidian
   - User must rescale the images using the Obsidian convert/compress to prevent repository bloat
 - Blog posts sync from mobile device to the boat server using Syncthing
-- Boat server has an hourly cronjob (see `references/backup.sh`) that enriches blog posts with Signal K metadata (like the day's GPS track) and then pushes the post to GitHub
+- Boat server has an hourly cronjob (see `references/backup.sh`) that enriches blog posts with Signal K metadata (like the day's GPS track) and then pushes the post to the configured git remote (currently GitHub)
 - GitHub runs a CI action to convert the site to HTML using Jekyll and publishes it on Github Pages
 
 We additionally have a cloud VPS that can be used to automate things that require constant internet connection.
@@ -22,7 +22,7 @@ We additionally have a cloud VPS that can be used to automate things that requir
 - Blog posts are written in Markdown on personal mobile devices using Obsidian
 - Blog posts sync from mobile device to the boat server using Syncthing
 - Boat server enriches blog posts with Signal K metadata (like the day's GPS track) and downscales images and converts them to WebP (updating Markdown reference accordingly)
-- Boat server commits the blog post and associated files to a rngit repository for eventual sync when on full internet connectivity
+- Boat server commits the blog post and associated files to a git repository for eventual sync when on full internet connectivity via the configured git remote(s)
 - User can access a web page (hosted via a Signal K plugin) where there are severalversions of the blog post available for copy-paste. Each of these should show thee required transmit resources (InReach message count or estimated Winlink transmit time):
   1. Blog post without images, encoded and prepared for transmission via InReach
   2. Blog post with image(s), encoded and prepared for transmission via InReach
@@ -37,9 +37,10 @@ We additionally have a cloud VPS that can be used to automate things that requir
   - Never publish a partially/corruptly reassembled post, only a fully verified one
 - The server then writes the blog post and attachments to the git repository. This needs consistent file naming to ensure multiple email reads don't end up with duplicate posts (as well as to ensure the hi-fi version eventually overrides the files)
 - The server overlays a small watermark/banner on lo-fi images before committing (e.g. 'lo-fi preview via radio') so a viewer never mistakes a blurry placeholder for the final photo
-- The cloud server also periodically tries to sync the repository via rngit (works when boat has full internet) to get the hi-fi assets
+- The cloud server also periodically tries to sync the repository via the configured git remote(s) (works when boat has full internet) to get the hi-fi assets
   - This needs to be done so that the hi-fi assets override the lo-fi versions (likely `-X theirs` merge strategy)
-- When there is new content to push, the cloud server pushes it to GitHub
+  - The specific transport mechanism (e.g., rngit) is an implementation detail
+- When there is new content to push, the cloud server pushes it to the configured git remote (currently GitHub)
 - GitHub runs a CI action to convert the site to HTML using Jekyll and publishes it on Github Pages
 - Cloud server sends a confirmation message back to user telling that the blog post has been published (including post name and metadata to identify it)
 

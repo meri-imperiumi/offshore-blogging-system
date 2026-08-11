@@ -57,7 +57,8 @@ class RngitSyncer extends Component {
   }
 
   handle(input, output) {
-    // Process control ports
+    // Process control ports (persist across activations; set on start,
+    // read on each periodic bang).
     if (input.hasData("repo_path")) {
       this.repoPath = input.getData("repo_path");
     }
@@ -68,16 +69,18 @@ class RngitSyncer extends Component {
       this.branch = input.getData("branch");
     }
 
-    // Consume trigger if present
-    if (input.hasData("in")) {
-      input.getData("in");
-    }
-
-    // Validate required settings
+    // Only sync on a trigger bang (RngitTimer fires every 6h). Without this
+    // gate the control IIPs alone would fire _doSync on startup — and every
+    // time a control value is set — instead of waiting for the timer.
     // Sync `return` (not `return null`): in an async handle, `return null`
     // resolves the promise and NoFlo calls output.sendDone(null), forwarding
     // null to the out port. A sync handle's `return` yields undefined, which
     // NoFlo treats as "preconditions not met" without sending anything.
+    if (!input.hasData("in")) {
+      return;
+    }
+    input.getData("in");
+
     if (!this.repoPath || !this.rngitRemote) {
       return;
     }
@@ -105,37 +108,36 @@ class RngitSyncer extends Component {
       // Get current branch
       const _currentBranch = await git.getCurrentBranch();
 
-      // Merge boat's branch into ours with -X theirs
-      // This ensures hi-fi content (from boat) wins over lo-fi (our commits)
-      const merged = await git.merge("-X", "theirs", `boat/${this.branch}`);
+      // Merge boat's branch into ours with -X theirs so hi-fi content (from
+      // boat) wins over lo-fi (our commits). merge() forwards all args to
+      // `git merge -X theirs boat/main`; returns true on success (covers both
+      // "merged" and "Already up to date."), aborts+throws on conflict.
+      await git.merge("-X", "theirs", `boat/${this.branch}`);
 
-      if (merged) {
-        const result = {
-          errors: [],
-          identityHash: "SYSTEM",
-          intent: "NOTIFY",
-          payload: "Rngit sync completed - hi-fi assets merged",
-        };
-
-        output.sendDone(result);
-      } else {
-        // No changes to merge
-        output.done();
-      }
-    } catch (err) {
-      // Don't fail the graph for sync errors - just notify
-      const errorResult = {
-        errors: [
-          {
-            message: `Rngit sync failed: ${err.message}`,
-          },
-        ],
+      // Always forward a confirmation — GithubPusher's ahead-check decides
+      // whether a push is actually warranted, so a no-op merge costs at most
+      // one pull per cycle.
+      output.sendDone({
+        errors: [],
         identityHash: "SYSTEM",
         intent: "NOTIFY",
-        payload: `Rngit sync failed: ${err.message}`,
-      };
-
-      output.send({ error: errorResult });
+        payload: "Rngit sync completed - hi-fi assets merged",
+      });
+    } catch (err) {
+      // Don't fail the graph for sync errors - notify on the error port
+      // (routed to ErrorLogger) and resolve the activation.
+      output.sendDone({
+        error: {
+          errors: [
+            {
+              message: `Rngit sync failed: ${err.message}`,
+            },
+          ],
+          identityHash: "SYSTEM",
+          intent: "NOTIFY",
+          payload: `Rngit sync failed: ${err.message}`,
+        },
+      });
     }
   }
 }
