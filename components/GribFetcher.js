@@ -150,12 +150,16 @@ class GribFetcher extends Component {
     // Generate unique query ID
     const queryId = crypto.randomBytes(8).toString("hex");
 
-    // Save pending request to database with channel
+    // Save pending request to database with channel. Store the exact query
+    // text: Saildocs discards our outbound subject and echoes the query's
+    // model:area as the reply subject, so the inbound reply is correlated
+    // against this stored text, NOT against the queryId in the subject.
     this.db.savePendingSaildocs(
       queryId,
       msg.identityHash,
       msg.replyTo,
       msg.channel, // PERSIST: for eventual reply routing
+      query, // STORE: for reply correlation (see SaildocsMatcher)
     );
 
     // Saildocs silently ignores emails whose body isn't terminated by a line
@@ -166,6 +170,11 @@ class GribFetcher extends Component {
     // Build outbound email message. `replyTo` carries the Saildocs address so
     // SmtpResponder (which reads msg.replyTo) addresses the request there;
     // this is a new outbound request, not a reply to the original sender.
+    //
+    // The "Your query: <queryId>" subject is now vestigial for correlation —
+    // Saildocs replaces it with the query string — but kept so the legacy
+    // subject-match path in SaildocsMatcher still works for any in-flight
+    // rows from before the query_text correlation shipped.
     const outboundMsg = {
       to: email,
       replyTo: email,

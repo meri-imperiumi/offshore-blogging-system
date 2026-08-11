@@ -340,6 +340,133 @@ describe("DatabaseHelper", () => {
     assert.strictEqual(db.countPendingSaildocs(), 1);
   });
 
+  it("stores query_text and matches a pending Saildocs reply by subject", () => {
+    db = new DatabaseHelper(":memory:");
+    db.initialize();
+
+    // Saildocs echoes the query's model:area as the reply subject, so we
+    // store the exact submitted query and match on its model:area prefix.
+    db.savePendingSaildocs(
+      "q1",
+      "id-a",
+      "captain@boat.sea",
+      "winlink",
+      "gfs:58n,60n,018e,022e|2,2|0,12|wind",
+    );
+
+    const pending = db.getPendingSaildocsBySubject("gfs:58n,60n,018e,022e");
+    assert.ok(pending, "should match by the model:area prefix");
+    assert.strictEqual(pending.query_id, "q1");
+    assert.strictEqual(pending.identity_hash, "id-a");
+    assert.strictEqual(pending.channel, "winlink");
+    assert.strictEqual(
+      pending.query_text,
+      "gfs:58n,60n,018e,022e|2,2|0,12|wind",
+    );
+  });
+
+  it("does not cross concurrent requests with different areas", () => {
+    // The Buddy Boat (Dacar-grant) case: a second identity has a request in
+    // flight. Matching on the echoed subject must NOT deliver the reply to
+    // the wrong recipient the way the old "most recent" fallback did.
+    db = new DatabaseHelper(":memory:");
+    db.initialize();
+
+    db.savePendingSaildocs(
+      "q-boat-a",
+      "id-a",
+      "captain@boat-a.sea",
+      "winlink",
+      "gfs:58n,60n,018e,022e|2,2|0,12|wind",
+    );
+    db.savePendingSaildocs(
+      "q-boat-b",
+      "id-b",
+      "skipper@boat-b.sea",
+      "inreach",
+      "gfs:10n,20n,60w,50w|2,2|0,12|wind",
+    );
+
+    const replyA = db.getPendingSaildocsBySubject("gfs:58n,60n,018e,022e");
+    assert.ok(replyA);
+    assert.strictEqual(replyA.identity_hash, "id-a");
+    assert.strictEqual(replyA.reply_to, "captain@boat-a.sea");
+
+    const replyB = db.getPendingSaildocsBySubject("gfs:10n,20n,60w,50w");
+    assert.ok(replyB);
+    assert.strictEqual(replyB.identity_hash, "id-b");
+    assert.strictEqual(replyB.reply_to, "skipper@boat-b.sea");
+  });
+
+  it("matches case-insensitively (Saildocs lowercases the subject)", () => {
+    db = new DatabaseHelper(":memory:");
+    db.initialize();
+
+    db.savePendingSaildocs(
+      "q1",
+      "id-a",
+      "r@x.com",
+      "inreach",
+      "GFS:58N,60N,018E,022E|2,2|0,12|WIND",
+    );
+    const pending = db.getPendingSaildocsBySubject("gfs:58n,60n,018e,022e");
+    assert.ok(pending);
+    assert.strictEqual(pending.query_id, "q1");
+  });
+
+  it("returns null from subject match when no query_text matches", () => {
+    db = new DatabaseHelper(":memory:");
+    db.initialize();
+    // A row saved without query_text (legacy caller) must not match by subject.
+    db.savePendingSaildocs("q1", "id-a", "r@x.com", "winlink");
+    assert.strictEqual(
+      db.getPendingSaildocsBySubject("gfs:58n,60n,018e,022e"),
+      null,
+    );
+  });
+
+  it("migrates an existing pending_saildocs table to add query_text", () => {
+    // Simulate a pre-migration database: create the table WITHOUT query_text,
+    // then migrate() must add it. Idempotent: running twice must not error.
+    db = new DatabaseHelper(":memory:");
+    db.initialize();
+    db.run("DROP TABLE pending_saildocs");
+    db.run(`CREATE TABLE pending_saildocs (
+      query_id TEXT PRIMARY KEY,
+      identity_hash TEXT NOT NULL,
+      reply_to TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`);
+    db.migrate();
+    db.migrate();
+
+    const cols = db.all("PRAGMA table_info(pending_saildocs)");
+    assert.ok(cols.some((c) => c.name === "query_text"));
+
+    // Saving with query_text now works on the migrated table.
+    db.savePendingSaildocs(
+      "q1",
+      "id-a",
+      "r@x.com",
+      "winlink",
+      "gfs:1n,2n,3e,4e|x",
+    );
+    const row = db.getPendingSaildocs("q1");
+    assert.strictEqual(row.query_text, "gfs:1n,2n,3e,4e|x");
+  });
+
+  it("reports whether buffered chunks exist for a transmission id", () => {
+    db = new DatabaseHelper(":memory:");
+    db.initialize();
+    db.saveBufferChunk("id-a", "tx1", "text", 1, 2, "r@x.com", "winlink", "hi");
+    assert.strictEqual(db.hasBufferChunks("id-a", "tx1"), true);
+    assert.strictEqual(db.hasBufferChunks("id-a", "tx2"), false);
+    assert.strictEqual(db.hasBufferChunks("id-b", "tx1"), false);
+    db.deleteBufferChunks("id-a", "tx1");
+    assert.strictEqual(db.hasBufferChunks("id-a", "tx1"), false);
+  });
+
   it("should increment metrics", () => {
     db = new DatabaseHelper(":memory:");
     db.initialize();

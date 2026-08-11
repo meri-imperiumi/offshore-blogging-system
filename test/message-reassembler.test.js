@@ -1,7 +1,9 @@
 import assert from "node:assert";
+import { rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { describe, it } from "node:test";
 import Wrapper from "noflo-wrapper";
+import DatabaseHelper from "../lib/DbHelper.js";
 
 const require = createRequire(import.meta.url);
 const reassemblerModule = require("../components/MessageReassembler.js");
@@ -155,5 +157,92 @@ describe("MessageReassembler", () => {
     assert.strictEqual(result.partType, "grib");
     assert.strictEqual(result.transmissionId, "abcd");
     assert.strictEqual(result.totalChunks, 3);
+  });
+
+  it("cancels a buffered transmission on a bare CANCEL <id> command", async () => {
+    // InReach delivers a CANCEL as a bare SYS payload (no chunk header).
+    // The reassembler must delete the buffered sequence and emit a NOTIFY.
+    const DB = "/tmp/reassembler-cancel-test.db";
+    rmSync(DB, { force: true });
+    const baseMsg = {
+      errors: [],
+      identityHash: "dev1",
+      replyTo: "boat@x.com",
+      channel: "inreach",
+    };
+    const t = new Wrapper("signalk-offshore-blogging/MessageReassembler");
+    const result = await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        fn();
+      };
+      const timer = setTimeout(() => finish(() => resolve(null)), 2000);
+      t.start()
+        .then(() => {
+          t.outs.out.on("data", (d) => finish(() => resolve(d)));
+          t.ins.dbpath.send(DB);
+          // 1) Buffer a single chunk of a 3-part sequence (not complete).
+          t.ins.in.send({
+            ...baseMsg,
+            intent: "SAILDOCS",
+            payload: "abcdG0103:AAAA",
+          });
+          // 2) Cancel it — bare, intent SYS, exactly as InReach delivers it.
+          t.ins.in.send({ ...baseMsg, intent: "SYS", payload: "CANCEL abcd" });
+        })
+        .catch(reject);
+    });
+
+    assert.ok(result, "should emit a NOTIFY on out after CANCEL");
+    assert.strictEqual(result.intent, "NOTIFY");
+    assert.strictEqual(result.payload, "Cancelled transmission: abcd");
+
+    // The buffered sequence must actually be gone from the DB.
+    const db = new DatabaseHelper(DB);
+    db.initialize();
+    assert.strictEqual(
+      db.hasBufferChunks("dev1", "abcd"),
+      false,
+      "buffered chunks should be deleted by CANCEL",
+    );
+    db.close();
+    rmSync(DB, { force: true });
+  });
+
+  it("passes a bare gate-consent 'CANCEL G1' through unchanged", async () => {
+    // A gate-consent CANCEL (for GribGate, via CommandRouter) also arrives
+    // bare as intent=SYS. The reassembler has nothing buffered for "G1", so
+    // it must pass it through to the router rather than swallow it.
+    const msg = {
+      errors: [],
+      identityHash: "dev1",
+      replyTo: "boat@x.com",
+      channel: "inreach",
+      intent: "SYS",
+      payload: "CANCEL G1",
+    };
+    const { data } = await runScenario({ msg, port: "out" });
+    assert.ok(data, "should pass the gate-cancel through on out");
+    assert.strictEqual(data.intent, "SYS");
+    assert.strictEqual(data.payload, "CANCEL G1");
+  });
+
+  it("passes a bare 'CANCEL' with no id through to the router", async () => {
+    // A malformed CANCEL (no transmissionId) has nothing to delete; let it
+    // pass through so the router sends it to MISSED -> ErrorLogger.
+    const msg = {
+      errors: [],
+      identityHash: "dev1",
+      replyTo: "boat@x.com",
+      channel: "inreach",
+      intent: "SYS",
+      payload: "CANCEL",
+    };
+    const { data } = await runScenario({ msg, port: "out" });
+    assert.ok(data, "should pass through on out (-> MISSED via router)");
+    assert.strictEqual(data.payload, "CANCEL");
   });
 });

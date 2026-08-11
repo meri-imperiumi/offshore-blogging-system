@@ -176,6 +176,37 @@ class GitPublisher extends Component {
         }
       }
 
+      // --- Images: resolve + validate paths BEFORE writing anything ---
+      // Each image buffer is written to the *exact path the body's markdown
+      // references* (resolved relative to _logs/, where the post lives), not
+      // a synthesized lo-fi path. This is deliberate: the boat will later sync
+      // the hi-fi WebP to that same path, and `git merge` overwrites cleanly.
+      // If we wrote to a different path we'd orphan the placeholder forever.
+      //
+      // Image paths are parsed out of the sender-controlled post body, so a
+      // "![x](../../etc/passwd)" reference must not escape the repo — same
+      // threat model the filename guard above already handles.
+      // path.posix.normalize (in resolveImageRepoPath) does NOT stop a
+      // "../../" reference from resolving above the root, so we resolve to
+      // absolute and verify it stays inside the repo. Validating up front
+      // means a bad reference fails the publish atomically, before any file
+      // (markdown or image) is written.
+      const imageBuffers = Array.isArray(blogData.imageBuffers)
+        ? blogData.imageBuffers
+        : [];
+      const imageRefs = this.extractImagePaths(blogData.bodyMarkdown || "");
+      const imagePaths = [];
+      for (let i = 0; i < imageBuffers.length; i++) {
+        const refPath = imageRefs[i] || `${blogData.postId}-${i + 1}.webp`;
+        const relPath = this.resolveImageRepoPath(refPath);
+        const fullImagePath = path.join(this.repoPath, relPath);
+        if (!this.isPathContained(fullImagePath, this.repoPath)) {
+          fail(msg, new Error(`Unsafe image path received: ${refPath}`));
+          return output.sendDone(msg);
+        }
+        imagePaths.push({ relPath, fullImagePath });
+      }
+
       // --- Markdown ---
       const markdownPath = this.computeMarkdownPath(blogData);
       const markdownFullPath = path.join(this.repoPath, markdownPath);
@@ -186,21 +217,10 @@ class GitPublisher extends Component {
       const markdownContent = this.buildMarkdown(blogData);
       fs.writeFileSync(markdownFullPath, markdownContent, "utf-8");
 
-      // --- Images ---
-      // Each image buffer is written to the *exact path the body's markdown
-      // references* (resolved relative to _logs/, where the post lives), not
-      // a synthesized lo-fi path. This is deliberate: the boat will later sync
-      // the hi-fi WebP to that same path, and `git merge` overwrites cleanly.
-      // If we wrote to a different path we'd orphan the placeholder forever.
-      const imageBuffers = Array.isArray(blogData.imageBuffers)
-        ? blogData.imageBuffers
-        : [];
-      const imageRefs = this.extractImagePaths(blogData.bodyMarkdown || "");
+      // --- Write images ---
       const writtenImagePaths = [];
       for (let i = 0; i < imageBuffers.length; i++) {
-        const refPath = imageRefs[i] || `${blogData.postId}-${i + 1}.webp`;
-        const relPath = this.resolveImageRepoPath(refPath);
-        const fullImagePath = path.join(this.repoPath, relPath);
+        const { relPath, fullImagePath } = imagePaths[i];
         const imageDir = path.dirname(fullImagePath);
         if (!fs.existsSync(imageDir)) {
           fs.mkdirSync(imageDir, { recursive: true });
@@ -314,6 +334,24 @@ class GitPublisher extends Component {
       return path.posix.normalize(p.slice(1));
     }
     return path.posix.normalize(path.posix.join("_logs", p));
+  }
+
+  /**
+   * Whether `target` resolves to a path inside `base` (or equals it).
+   *
+   * Used to contain sender-controlled image paths within the repo root.
+   * Resolving both to absolute and taking path.relative is the standard
+   * containment check: if target is under base the result won't start with
+   * ".." and won't be absolute; a "../../" escape yields a ".." prefix, and a
+   * cross-drive path yields an absolute relative on Windows. This catches
+   * escapes that path.posix.normalize alone leaves through (normalize keeps
+   * leading "..").
+   */
+  isPathContained(target, base) {
+    const resolvedTarget = path.resolve(target);
+    const resolvedBase = path.resolve(base);
+    const rel = path.relative(resolvedBase, resolvedTarget);
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
   }
 
   /**

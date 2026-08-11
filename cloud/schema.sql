@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS pending_saildocs (
   identity_hash TEXT NOT NULL,
   reply_to TEXT NOT NULL,
   channel TEXT NOT NULL,
+  -- The exact submitted query string. Saildocs discards our custom outbound
+  -- subject and echoes the query's model:area as the reply subject, so we
+  -- correlate replies against this (see DbHelper.getPendingSaildocsBySubject).
+  -- Nullable for backward compatibility; NULL rows fall back to most-recent.
+  query_text TEXT,
   created_at INTEGER NOT NULL
 );
 

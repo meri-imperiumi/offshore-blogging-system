@@ -81,14 +81,6 @@ class ParserRouter extends Component {
 
     // Find the matching route index
     const routeIndex = this.routes.indexOf(msg.intent);
-    console.log(
-      "ParserRouter: intent=",
-      msg.intent,
-      "routeIndex=",
-      routeIndex,
-      "routes=",
-      this.routes,
-    );
 
     if (routeIndex === -1) {
       // Unknown intent - route to MISSED

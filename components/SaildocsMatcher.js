@@ -84,24 +84,34 @@ class SaildocsMatcher extends Component {
     }
 
     try {
-      // Extract query ID from subject line. Saildocs responses typically have
-      // subject like: "Your query: <query_id>" — but real Saildocs responses
-      // actually use the query string as the subject (e.g.
-      // "gfs:58n,60n,018e,022e"), so this match often fails. In that case,
-      // fall back to the most recent pending request (see below).
+      // Correlate the inbound reply to a pending request.
+      //
+      // Saildocs generates the reply subject from the query itself (e.g.
+      // "gfs:58n,60n,018e,022e") — it does NOT preserve our "Your query:
+      // <queryId>" subject, so the old queryId-in-subject match usually
+      // fails. We now store the exact submitted query at request time and
+      // match the incoming subject against its model:area prefix (primary).
+      // This survives concurrent requests with different areas (including
+      // the Buddy Boat / Dacar-grant case) and out-of-order replies.
       const subject = email.subject || email.payload?.subject || "";
-      const match = subject.match(/Your query:\s*(\S+)/i);
 
-      let pending = null;
-      if (match) {
-        const queryId = match[1];
-        pending = this.db.getPendingSaildocs(queryId);
+      let pending = this.db.getPendingSaildocsBySubject(subject);
+
+      if (!pending) {
+        // Legacy path: an outbound request whose subject still carried
+        // "Your query: <id>" (older code / pre-migration rows). Harmless on
+        // new rows, which never carry it.
+        const match = subject.match(/Your query:\s*(\S+)/i);
+        if (match) {
+          const queryId = match[1];
+          pending = this.db.getPendingSaildocs(queryId);
+        }
       }
 
       if (!pending) {
-        // No queryId in subject, or queryId not found. Fall back to the
-        // most recent pending request. This works because the offshore
-        // use case typically has only one request in flight at a time.
+        // Last resort: most recent pending request. Retained for rows with
+        // no query_text (pre-migration) and as a safety net — NOT as the
+        // primary mechanism, since it crosses concurrent requests.
         pending = this.db.getMostRecentPendingSaildocs();
       }
 

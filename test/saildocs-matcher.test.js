@@ -249,4 +249,48 @@ describe("SaildocsMatcher", () => {
       "should carry imapUid so the Saildocs response email can be acked",
     );
   });
+
+  it("correlates by query_text subject, not most-recent (concurrent requests)", async () => {
+    // The Buddy Boat case: two identities each have a Saildocs request in
+    // flight with different areas. Real Saildocs echoes the query's
+    // model:area as the reply subject. Matching on the stored query_text
+    // must deliver each reply to the right recipient — the old most-recent
+    // fallback would cross them (and mis-route channel/replyTo).
+    db.savePendingSaildocs(
+      "q-boat-a",
+      "id-a",
+      "captain@boat-a.sea",
+      "winlink",
+      "gfs:58n,60n,018e,022e|2,2|0,12|wind",
+    );
+    // Second identity's request is NEWER (would win under most-recent).
+    db.savePendingSaildocs(
+      "q-boat-b",
+      "id-b",
+      "skipper@boat-b.sea",
+      "inreach",
+      "gfs:10n,20n,60w,50w|2,2|0,12|wind",
+    );
+
+    const email = {
+      subject: "gfs:58n,60n,018e,022e",
+      from: { address: "query-reply@saildocs.com" },
+      payload: { attachment: Buffer.from("GRIB for boat A") },
+    };
+
+    const { data } = await runScenario({ email, port: "direct" });
+    assert.ok(data, "should emit on direct");
+    assert.strictEqual(
+      data.identityHash,
+      "id-a",
+      "should restore boat A's identity, not the newer boat B",
+    );
+    assert.strictEqual(data.replyTo, "captain@boat-a.sea");
+    assert.strictEqual(data.channel, "winlink");
+
+    // Only boat A's pending entry is consumed; boat B's must remain for its
+    // own (still-in-flight) reply.
+    assert.ok(!db.getPendingSaildocs("q-boat-a"), "boat A entry consumed");
+    assert.ok(db.getPendingSaildocs("q-boat-b"), "boat B entry preserved");
+  });
 });

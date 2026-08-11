@@ -71,7 +71,6 @@ class MessageReassembler extends Component {
   }
 
   doHandle(input, output) {
-    console.log("MessageReassembler.doHandle called");
     // Process control ports
     if (input.hasData("dbpath")) {
       this.dbPath = input.getData("dbpath");
@@ -106,18 +105,31 @@ class MessageReassembler extends Component {
       return output.sendDone({ out: msg });
     }
 
-    // Parse chunk headers from payload
+    // Parse chunk headers from payload. A SYS command to abort a stuck
+    // multi-part upload arrives BARE (InReachReceiver emits plain-text SYS
+    // payloads like "CANCEL 0805" with no chunk header), so we derive a
+    // header-free "logical payload" whether or not a header was present and
+    // check CANCEL against that.
     const headers = this.parseChunkHeaders(msg.payload);
+    const logicalPayload = headers ? headers.payload : msg.payload;
 
-    // If no headers found, treat as complete message (pass through)
-    if (!headers) {
-      console.log("MessageReassembler: no chunk headers, passing through");
+    // CANCEL <transmissionId>: abort a buffered sequence we're holding.
+    // Only consume it when the target id refers to a sequence we're actually
+    // buffering — otherwise pass it through so a gate-consent "CANCEL G1"
+    // reaches GribGate via CommandRouter, and a bare "CANCEL" with no id
+    // reaches ErrorLogger via MISSED. Both of those also arrive bare as
+    // intent=SYS, so this disambiguation is what keeps them working.
+    if (msg.intent === "SYS" && logicalPayload.trim().startsWith("CANCEL ")) {
+      if (this.handleCancel(msg, logicalPayload, output)) {
+        return;
+      }
+      // Not a buffered transmission — pass through to the router.
       return output.sendDone({ out: msg });
     }
 
-    // Check for CANCEL command
-    if (msg.intent === "SYS" && msg.payload.trim().startsWith("CANCEL ")) {
-      return this.handleCancel(msg, headers, output);
+    // If no headers found, treat as complete message (pass through)
+    if (!headers) {
+      return output.sendDone({ out: msg });
     }
 
     // Buffer the chunk
@@ -183,39 +195,45 @@ class MessageReassembler extends Component {
   }
 
   /**
-   * Handle CANCEL command
+   * Handle a CANCEL <transmissionId> command.
+   *
+   * Cancels (deletes) the buffered chunk sequence for the target id and
+   * mutates the message into a NOTIFY confirming the cancellation.
+   *
+   * Returns true when a buffered sequence was found and cancelled (the
+   * caller stops processing — the message has already been emitted).
+   * Returns false when no buffered sequence exists for the target id, so the
+   * caller passes the command through unchanged: it may be a gate-consent
+   * "CANCEL G1" destined for GribGate (via CommandRouter), or an unknown id.
+   *
+   * The target id is parsed from the header-free logical payload — the raw
+   * msg.payload still carries the chunk-header prefix on the wrapped path,
+   * so matching it directly (the old code) never fired. The old code also
+   * deleted headers.transmissionId (the cancel command's *own* header id)
+   * instead of the target id parsed from the payload, so even when it ran it
+   * removed the wrong row.
+   *
+   * @param {object} msg - Assembly message (mutated on success)
+   * @param {string} logicalPayload - Header-free payload ("CANCEL <id>")
+   * @param {object} output - NoFlo output
+   * @returns {boolean} whether a buffered sequence was cancelled
    */
-  handleCancel(msg, headers, output) {
-    const cancelMatch = msg.payload.match(/^CANCEL\s+(\S+)/);
-    if (!cancelMatch) {
-      // Malformed CANCEL - no transmissionId specified
-      // Route to ErrorLogger instead
-      fail(
-        msg,
-        new Error("Malformed CANCEL command: transmissionId is required"),
-      );
-      // Don't emit anything - ErrorLogger will handle it
-      return output.done();
+  handleCancel(msg, logicalPayload, output) {
+    const cancelMatch = logicalPayload.match(/^CANCEL\s+(\S+)/);
+    const targetId = cancelMatch ? cancelMatch[1] : null;
+    if (!targetId || !this.db.hasBufferChunks(msg.identityHash, targetId)) {
+      return false;
     }
 
-    const cancelTransmissionId = cancelMatch[1];
+    this.db.deleteBufferChunks(msg.identityHash, targetId);
 
-    // Delete the matching buffered sequence
-    if (headers.transmissionId) {
-      this.db.deleteBufferChunks(
-        msg.identityHash,
-        headers.transmissionId,
-        headers.partType,
-      );
-    } else {
-      this.db.deleteBufferChunks(msg.identityHash, cancelTransmissionId);
-    }
-
-    // Mutate msg to NOTIFY intent confirming cancellation
     msg.intent = "NOTIFY";
-    msg.payload = `Cancelled transmission: ${cancelTransmissionId}`;
-
-    return output.sendDone(msg);
+    msg.payload = `Cancelled transmission: ${targetId}`;
+    // MessageReassembler has two out ports (out, buffered), so the port must
+    // be specified — a bare sendDone(msg) throws. (This was masked before
+    // because the old CANCEL path was unreachable.)
+    output.sendDone({ out: msg });
+    return true;
   }
 
   /**
@@ -290,6 +308,17 @@ class MessageReassembler extends Component {
       if (output.isAttached("out")) {
         output.send({ out: nackMsg });
       }
+
+      // Delete the abandoned sequence so it isn't re-NACKed on every sweep.
+      // Without this, the row is never removed and created_at never advances,
+      // so an abandoned transmission nags the user with the same warning
+      // every TTL forever, burning message budget on a one-time problem.
+      // Mirrors grib_gates' documented pruning behavior.
+      this.db.deleteBufferChunks(
+        entry.identity_hash,
+        entry.transmission_id,
+        entry.part_type,
+      );
     }
   }
 

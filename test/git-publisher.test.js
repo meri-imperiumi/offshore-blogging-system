@@ -364,6 +364,51 @@ describe("GitPublisher", () => {
     );
   });
 
+  it("rejects a path-traversal image path (sender-controlled body refs)", async () => {
+    // The filename guard covers the post filename; image refs parsed out of
+    // the sender-controlled body must be contained the same way. A
+    // "![x](../../etc/evil.webp)" reference must not escape the repo root —
+    // path.posix.normalize leaves leading "../" intact, so resolve + verify.
+    const escapeName = `evil-trav-${process.pid}.webp`;
+    const escapeTarget = path.resolve(tmpDir, "..", "etc", escapeName);
+    fs.rmSync(escapeTarget, { force: true });
+
+    const component = getComponent();
+    const img = await makeImageBuffer(60, 40);
+    const msg = {
+      errors: [],
+      payload: {
+        filename: "2026-08-13",
+        title: "Attempt",
+        date: "2026-08-13",
+        postId: "0813",
+        bodyMarkdown: `![evil](../../etc/${escapeName})`,
+        imageBuffers: [img],
+        imageCount: 1,
+      },
+    };
+    const out = await runPublish(component, msg, {
+      repo_path: tmpDir,
+      push: false,
+    });
+
+    assert.ok(out, "should emit the failed message");
+    assert.ok(out.errors.length > 0, "should have errors");
+    assert.match(out.errors[0].message, /Unsafe image path/);
+    assert.ok(
+      !fs.existsSync(escapeTarget),
+      "no image file should be written outside the repo root",
+    );
+    // Atomic: image paths are validated BEFORE any write, so a rejected post
+    // leaves no markdown file on disk either.
+    assert.ok(
+      !fs.existsSync(path.join(tmpDir, "_logs", "2026-08-13.md")),
+      "no partial markdown write on a rejected image path",
+    );
+
+    fs.rmSync(escapeTarget, { force: true });
+  });
+
   it("preserves a filename with spaces and hyphens exactly as transmitted", async () => {
     const component = getComponent();
     const msg = {
