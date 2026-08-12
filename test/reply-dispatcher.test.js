@@ -235,4 +235,51 @@ describe("ReplyDispatcher component", () => {
       }, 5000);
     });
   });
+
+  it("routes failed inreach messages to INREACH port", async () => {
+    const t = new Wrapper("signalk-offshore-blogging/ReplyDispatcher");
+    await t.start();
+
+    return new Promise((resolve, reject) => {
+      const msg = {
+        errors: [{ message: "upstream error" }],
+        identityHash: "test-id",
+        replyTo: "test@inreach.garmin.com",
+        channel: "inreach",
+        intent: "NOTIFY",
+        payload: "notification content",
+      };
+
+      let received = null;
+      let receivedDisconnect = false;
+
+      t.outs.inreach.on("data", (data) => {
+        if (!received) {
+          received = data;
+        }
+      });
+
+      t.outs.inreach.on("disconnect", () => {
+        receivedDisconnect = true;
+        try {
+          assert.ok(received, "Should have received data");
+          assert.ok(received.errors);
+          assert.strictEqual(received.errors[0].message, "upstream error");
+          assert.strictEqual(received.channel, "inreach");
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+
+      t.ins.in.send(msg);
+      t.ins.in.disconnect();
+
+      setTimeout(() => {
+        if (!receivedDisconnect) {
+          reject(new Error("Test timed out - no disconnect received"));
+        }
+      }, 5000);
+    });
+  });
 });

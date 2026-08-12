@@ -40,36 +40,37 @@ class ReplyDispatcher extends Component {
 
     const msg = input.getData("in");
 
-    // Check for failed messages - pass through to ErrorLogger
+    // Check for failed messages - pass through to appropriate channel
     if (failed(msg)) {
-      output.send({ smtp: msg });
-      return output.sendDone();
+      // Route failed messages based on their channel, defaulting to smtp
+      const port = msg.channel === "inreach" ? "inreach" : "smtp";
+      output.sendDone({ [port]: msg });
+      return;
     }
 
     // Validate channel is present
     if (!msg.channel) {
       fail(msg, new Error("Missing channel in reply message"));
-      output.send({ smtp: msg });
-      return output.sendDone();
+      // Default to smtp for unknown channel
+      output.sendDone({ smtp: msg });
+      return;
     }
 
     // Route based on channel
     switch (msg.channel) {
       case "winlink":
-        output.send({ smtp: msg });
-        break;
+        output.sendDone({ smtp: msg });
+        return;
 
       case "inreach":
-        output.send({ inreach: msg });
-        break;
+        output.sendDone({ inreach: msg });
+        return;
 
       default:
         fail(msg, new Error(`Unrecognized channel: ${msg.channel}`));
-        output.send({ smtp: msg });
-        break;
+        output.sendDone({ smtp: msg });
+        return;
     }
-
-    return output.sendDone();
   }
 }
 
