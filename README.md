@@ -1,6 +1,6 @@
 # Signal K Offshore Blogging Plugin
 
-A Signal K plugin for encoding blog posts and weather requests for low-bandwidth satellite transmission via InReach or Winlink.
+A Signal K plugin for encoding blog posts and weather requests for low-bandwidth satellite transmission via InReach or Winlink. Requires a "cloud server" component running somewhere online for catching and responding to the requests.
 
 ## Features
 

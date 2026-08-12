@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/meri-imperiumi/signalk-offshore-blogging.git"
+    "url": "rns://3ea5aad068a337670f5bb8073226adb4/public/offshore-blogging-system"
   },
   "keywords": [
     "signalk-node-server-plugin",
@@ -23,11 +23,8 @@
   ],
   "author": "Henri Bergius <henri.bergius@iki.fi>",
   "license": "EUPL-1.2",
-  "bugs": {
-    "url": "https://github.com/meri-imperiumi/signalk-offshore-blogging/issues"
-  },
-  "homepage": "https://github.com/meri-imperiumi/signalk-offshore-blogging#readme",
   "signalk": {
+    "appIcon": "./public/icon.png",
     "displayName": "Offshore Blogging",
     "description": "Encode blog posts and weather requests for transmission via InReach or Winlink"
   },
