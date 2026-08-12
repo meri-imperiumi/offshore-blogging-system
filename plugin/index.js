@@ -796,7 +796,13 @@ module.exports = (app) => {
           "Content-Disposition",
           `attachment; filename="${req.params.id}.grb"`,
         );
-        res.setHeader("Content-Type", "application/octet-stream");
+        // Determine GRIB edition to set correct MIME type
+        // GRIB edition is at byte 8 (0-indexed), with values 1 or 2
+        const gribData = await fs.readFile(filepath);
+        const edition = gribData.length >= 9 ? gribData[8] : 1;
+        const contentType =
+          edition === 2 ? "application/x-grib2" : "application/x-grib";
+        res.setHeader("Content-Type", contentType);
         res.sendFile(filepath);
       } catch (error) {
         if (error.code === "BAD_ID") {

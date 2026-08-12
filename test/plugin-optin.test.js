@@ -270,3 +270,67 @@ test("download rejects an invalid id with 400", async () => {
   );
   assert.strictEqual(res.statusCode, 400);
 });
+
+test("download sets application/x-grib Content-Type for GRIB1", async () => {
+  const fs = require("node:fs").promises;
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-mime-"));
+  try {
+    const { handlers } = await setupPlugin({ gribStoragePath: dir });
+    // Build a minimal GRIB1 file (edition = 1 at byte 8)
+    // GRIB format: "GRIB" + length (4 bytes) + edition (1 byte)
+    const grib1 = Buffer.concat([
+      Buffer.from("GRIB", "ascii"),
+      Buffer.from([0x00, 0x00, 0x00, 59]), // total length
+      Buffer.from([0x01]), // edition 1
+      Buffer.alloc(50, 0x42),
+    ]);
+    await handlers["POST /api/grib/assemble"](
+      { body: { chunks: makeGribChunks("g1mt", grib1) } },
+      mockRes(),
+    );
+
+    const dlRes = mockResFull();
+    await handlers["GET /api/gribs/:id/download"](
+      { params: { id: "g1mt" } },
+      dlRes,
+    );
+    assert.strictEqual(dlRes.statusCode, 200);
+    assert.strictEqual(dlRes.headers["Content-Type"], "application/x-grib");
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("download sets application/x-grib2 Content-Type for GRIB2", async () => {
+  const fs = require("node:fs").promises;
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-mime2-"));
+  try {
+    const { handlers } = await setupPlugin({ gribStoragePath: dir });
+    // Build a minimal GRIB2 file (edition = 2 at byte 8)
+    // GRIB format: "GRIB" + length (4 bytes) + edition (1 byte)
+    const grib2 = Buffer.concat([
+      Buffer.from("GRIB", "ascii"),
+      Buffer.from([0x00, 0x00, 0x00, 59]), // total length
+      Buffer.from([0x02]), // edition 2
+      Buffer.alloc(50, 0x42),
+    ]);
+    await handlers["POST /api/grib/assemble"](
+      { body: { chunks: makeGribChunks("g2mt", grib2) } },
+      mockRes(),
+    );
+
+    const dlRes = mockResFull();
+    await handlers["GET /api/gribs/:id/download"](
+      { params: { id: "g2mt" } },
+      dlRes,
+    );
+    assert.strictEqual(dlRes.statusCode, 200);
+    assert.strictEqual(dlRes.headers["Content-Type"], "application/x-grib2");
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
