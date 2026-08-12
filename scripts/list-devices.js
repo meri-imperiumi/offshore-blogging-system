@@ -30,7 +30,9 @@ function main() {
     const db = new DatabaseHelper(dbPath);
     db.initialize();
 
-    const devices = db.db.prepare("SELECT * FROM inreach_devices ORDER BY bounce_token").all();
+    const devices = db.db
+      .prepare("SELECT * FROM inreach_devices ORDER BY bounce_token")
+      .all();
 
     if (devices.length === 0) {
       console.log("No devices registered.");
@@ -42,9 +44,13 @@ function main() {
         console.log(`  IMEI: ${dev.imei}`);
         console.log(`  Identity: ${dev.identity_hash}`);
         console.log(`  Owner: ${dev.owner_name || "N/A"}`);
-        console.log(`  Registered: ${new Date(dev.registered_at * 1000).toISOString()}`);
+        console.log(
+          `  Registered: ${new Date(dev.registered_at * 1000).toISOString()}`,
+        );
         if (dev.last_seen) {
-          console.log(`  Last seen: ${new Date(dev.last_seen * 1000).toISOString()}`);
+          console.log(
+            `  Last seen: ${new Date(dev.last_seen * 1000).toISOString()}`,
+          );
         }
         console.log();
       }

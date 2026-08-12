@@ -23,9 +23,13 @@ const DatabaseHelper = require("../lib/DbHelper");
 const fs = require("node:fs");
 
 function usage() {
-  console.error("Usage: node scripts/register-device.js <device_id> <imei> <identity_hash> [owner_name]");
+  console.error(
+    "Usage: node scripts/register-device.js <device_id> <imei> <identity_hash> [owner_name]",
+  );
   console.error("Arguments:");
-  console.error("  device_id      Device ID from Garmin bounce token (e.g. 2565887)");
+  console.error(
+    "  device_id      Device ID from Garmin bounce token (e.g. 2565887)",
+  );
   console.error("  imei           Device IMEI");
   console.error("  identity_hash  Reticulum identity hash");
   console.error("  owner_name     Optional owner name");
