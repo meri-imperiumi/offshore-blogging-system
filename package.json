@@ -42,5 +42,8 @@
   },
   "devDependencies": {
     "noflo-wrapper": "^0.5.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
