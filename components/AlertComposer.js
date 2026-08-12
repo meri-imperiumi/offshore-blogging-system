@@ -1,12 +1,19 @@
 const { Component, failed } = require("noflo-assembly");
 
 /**
- * AlertComposer - Out-of-band operator alert for unrecoverable InReach failures
+ * AlertComposer - Out-of-band operator alert for unrecoverable failures.
  *
- * Sits on InReachSender's error port and composes an operator-facing email
- * (handed to SmtpResponder over SMTP) when the InReach reply channel is
- * genuinely dead — NOT on transient failures (rate limits, network blips),
- * which the system can retry or drop without paging the operator.
+ * Sits on InReachSender's OUT port (and DacarAuthorizer's DENIED port) and
+ * composes an operator-facing email (handed to SmtpResponder over SMTP) when
+ * a failure looks serious enough to page the operator.
+ *
+ * Design: fail-open (opt-out, not opt-in). We alert on ANYTHING that isn't
+ * explicitly known to be transient. This means a new, unforeseen failure
+ * mode produces a [UNKNOWN ALERT] instead of being silently swallowed —
+ * the operator can then decide whether it matters and either add the code
+ * to TRANSIENT_CODES (if it's benign) or to ALERT_PREFIXES (for a nicer
+ * subject line). One rate-limited false positive is far better than
+ * silently missing a new failure mode.
  *
  * Why SMTP: cloud.md's "not itself routed through this same component" rule.
  * The alert goes out over SMTP (SmtpResponder), never back through
@@ -21,50 +28,60 @@ const { Component, failed } = require("noflo-assembly");
  * that one alert covers. The full per-incident detail is in ErrorLogger
  * (wired in parallel in the graph), which records every failure unfiltered.
  *
- * Unrecoverable codes (alerted):
- *   SESSION_EXPIRED  — 401/403. Under "no auth session" (treat the Python
- *                      references as canonical: the capability is the per-
- *                      message extId GUID, not a login), this means the
- *                      reply channel/GUID is closed; recovery needs a fresh
- *                      inbound message from the boat.
- *   BAD_URL          — reply URL missing/malformed. Config or upstream bug;
- *                      won't self-heal.
- *   NOT_CONFIGURED   — replyaddress control port unset. Deployment config
- *                      error; needs operator action.
- *
- * Transient codes (dropped silently):
+ * Transient codes (dropped — known to self-heal):
  *   RATE_LIMITED     — 429. Retry later.
  *   NETWORK_ERROR    — transport/timeout. Retry later.
- *   API_FAILURE       — other non-200. Can't cleanly separate 5xx-transient
- *                      from 4xx-permanent without finer status mapping, so
- *                      treated as transient to avoid paging on a Garmin 500
- *                      that recovers in minutes. If this proves to mask real
- *                      failures, promote it to the unrecoverable set.
+ *   API_FAILURE       — other non-200. Treated as transient to avoid paging
+ *                      on a Garmin 500 that recovers in minutes. If this
+ *                      masks real failures, remove it from this set.
+ *
+ * Alerted codes (non-exhaustive — anything not transient alerts):
+ *   SESSION_EXPIRED  — 401/403. Reply channel/GUID is closed; recovery
+ *                      needs a fresh inbound message from the boat.
+ *   BAD_URL          — reply URL missing/malformed. Won't self-heal.
+ *   NOT_CONFIGURED   — replyaddress control port unset. Config error.
+ *   BAD_RESPONSE     — 200 with HTML body: Garmin served a login/error page.
+ *   AUTH_DENIED      — Authorization/security event (spoofing attempt).
+ *   <unknown>        — Any code not in TRANSIENT_CODES or ALERT_PREFIXES
+ *                      gets a [UNKNOWN ALERT] prefix so the operator knows
+ *                      to investigate and classify it.
+ *   <no code>        — Error with no .code property gets [ALERT] + UNCLASSIFIED
+ *                      as the synthetic code.
  */
 
-// Error codes that represent a genuinely dead channel, not a transient blip.
-const UNRECOVERABLE_CODES = new Set([
-  "SESSION_EXPIRED",
-  "BAD_URL",
-  "NOT_CONFIGURED",
-  "BAD_RESPONSE",
-  "AUTH_DENIED", // Authorization/security events
+// Codes we KNOW are transient — retry or drop, don't alert.
+// Everything else alerts. Adding a new transient code here suppresses it.
+const TRANSIENT_CODES = new Set([
+  "RATE_LIMITED", // 429
+  "NETWORK_ERROR", // transport/timeout
+  "API_FAILURE", // other non-200 (see comment above)
 ]);
 
-// Alert prefix based on code type
+// Alert prefix by code type. Codes not listed here get [UNKNOWN ALERT].
+// Adding a new alert type: set err.code in the source component, wire it
+// to AlertComposer in the graph, and optionally add a prefix here.
 const ALERT_PREFIXES = {
+  // InReach transport failures
   SESSION_EXPIRED: "[InReach Alert]",
   BAD_URL: "[InReach Alert]",
   NOT_CONFIGURED: "[InReach Alert]",
   BAD_RESPONSE: "[InReach Alert]",
+  // Authorization/security events
   AUTH_DENIED: "[AUTH ALERT]",
-  GIT_PUSH_FAILED: "[SYSTEM ALERT]", // Future extension
+  // System errors (future extensions — components that set these codes
+  // will automatically alert even without being listed here, but listing
+  // them gives a cleaner subject line)
+  GIT_PUSH_FAILED: "[SYSTEM ALERT]",
   BLOG_DECODE_CRC_MISMATCH: "[SYSTEM ALERT]",
   GIT_COMMIT_FAILED: "[SYSTEM ALERT]",
   GIT_MERGE_CONFLICT: "[SYSTEM ALERT]",
+  // No .code property on the error at all
+  UNCLASSIFIED: "[ALERT]",
 };
 
-const DEFAULT_PREFIX = "[ALERT]";
+// Prefix for codes we've never seen before (not in ALERT_PREFIXES, not
+// in TRANSIENT_CODES). Signals "investigate and classify me."
+const UNKNOWN_PREFIX = "[UNKNOWN ALERT]";
 
 class AlertComposer extends Component {
   constructor() {
@@ -139,17 +156,16 @@ class AlertComposer extends Component {
       return output.done();
     }
 
-    // Find the InReachError code. The last error is the most recent (fail()
-    // appends). If it lacks a code, this isn't an InReach failure we can
-    // classify — drop it (ErrorLogger still records it).
+    // Find the error code. The last error is the most recent (fail()
+    // appends). If it lacks a code, we use a synthetic "UNCLASSIFIED" code
+    // so we still alert — an error with no code is itself unexpected.
     const err = msg.errors?.[msg.errors.length - 1];
-    const code = err?.code;
-    if (!code) {
-      return output.done();
-    }
+    const rawCode = err?.code;
+    const code = rawCode || "UNCLASSIFIED";
 
-    // Only alert on unrecoverable codes. Transient failures are dropped.
-    if (!UNRECOVERABLE_CODES.has(code)) {
+    // Only suppress known-transient codes. Everything else alerts —
+    // fail-open so unforeseen failure modes are visible.
+    if (TRANSIENT_CODES.has(code)) {
       return output.done();
     }
 
@@ -189,7 +205,7 @@ class AlertComposer extends Component {
  * 2. Failures BEFORE success (bad URL, no config, auth denied, CRC mismatch) - no context
  */
 function renderAlert(code, err, msg) {
-  const prefix = ALERT_PREFIXES[code] || DEFAULT_PREFIX;
+  const prefix = ALERT_PREFIXES[code] || UNKNOWN_PREFIX;
   const lines = [`${prefix} ${code}`, "", err.message || "(no detail)"];
 
   // Show all errors in the message, not just the last one

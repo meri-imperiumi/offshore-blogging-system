@@ -229,7 +229,7 @@ describe("AlertComposer component", () => {
     assert.strictEqual(received, null);
   });
 
-  it("drops a failed msg whose error has no code (generic Error)", async () => {
+  it("alerts on a failed msg whose error has no code (UNCLASSIFIED)", async () => {
     const msg = {
       errors: [{ message: "something broke" }], // no .code
       identityHash: "id",
@@ -241,9 +241,19 @@ describe("AlertComposer component", () => {
     const { received } = await runOnce({
       msg,
       controls: { alertaddress: "ops@example.com" },
-      quietMs: 300,
     });
-    assert.strictEqual(received, null);
+    assert.ok(received, "no-code errors should alert (fail-open)");
+    assert.match(received.notifyText, /\[ALERT\] UNCLASSIFIED/);
+    assert.match(received.notifyText, /something broke/);
+  });
+
+  it("alerts on an unknown error code (fail-open)", async () => {
+    const { received } = await runOnce({
+      msg: failedMsg({ code: "SOMETHING_NEW" }),
+      controls: { alertaddress: "ops@example.com" },
+    });
+    assert.ok(received, "unknown codes should alert (fail-open)");
+    assert.match(received.notifyText, /\[UNKNOWN ALERT\] SOMETHING_NEW/);
   });
 
   it("drops everything when alertaddress is not configured", async () => {

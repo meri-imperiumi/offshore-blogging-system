@@ -67,12 +67,16 @@ export SMTP_PASSWORD={{ YOUR_PASSWORD }}
 # InReach reply configuration
 export INREACH_REPLY_ADDRESS=cloud@boat.example.com
 
-# Operator alerting (SMTP email for unrecoverable failures)
+# Operator alerting (SMTP email for failures)
 # Sent via SmtpResponder, NOT through InReachSender (prevents circular failure)
-# Alerted codes:
-#   SESSION_EXPIRED, BAD_URL, NOT_CONFIGURED, BAD_RESPONSE → [InReach Alert]
-#   AUTH_DENIED (spoofing/authorization failures)           → [AUTH ALERT]
-# Transient codes (RATE_LIMITED, NETWORK_ERROR, API_FAILURE) are logged only
+# Fail-open design: alerts on ANY failure that isn't explicitly transient.
+#   Known InReach codes: SESSION_EXPIRED, BAD_URL, NOT_CONFIGURED, BAD_RESPONSE → [InReach Alert]
+#   Auth/security:       AUTH_DENIED                                        → [AUTH ALERT]
+#   Unknown codes:       anything not listed below                          → [UNKNOWN ALERT]
+#   No error code:      error with no .code property                        → [ALERT] UNCLASSIFIED
+# Suppressed (transient, self-healing): RATE_LIMITED, NETWORK_ERROR, API_FAILURE
+# To add a new alert type: set err.code in the source component, wire to AlertComposer
+# To suppress a new transient: add its code to TRANSIENT_CODES in AlertComposer.js
 # Rate limited: max 1 alert per error code per hour (configurable)
 export ALERT_ADDRESS=operator@example.com
 
