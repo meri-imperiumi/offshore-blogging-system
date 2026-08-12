@@ -72,12 +72,18 @@ class ErrorLogger extends Component {
     const channel = msg.channel || "UNKNOWN";
     const payload = msg.payload || "";
 
-    // Extract error details
+    // Extract error details - log ALL errors, not just the last one
     let errorDetails = "No error details";
     if (Array.isArray(msg.errors) && msg.errors.length > 0) {
+      // Format each error with its code (if present) for better traceability
       errorDetails = msg.errors
-        .map((err) => err.message || String(err))
-        .join("; ");
+        .map((err, i) => {
+          const prefix = i === msg.errors.length - 1 ? "→ " : "  ";
+          return err.code
+            ? `${prefix}[${err.code}] ${err.message}`
+            : `${prefix}${err.message}`;
+        })
+        .join("\n");
     } else if (msg.error) {
       errorDetails = msg.error.message || String(msg.error);
     }

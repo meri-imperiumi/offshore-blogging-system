@@ -22,15 +22,12 @@ class ReplyDispatcher extends Component {
       outPorts: {
         smtp: {
           datatype: "object",
-          description: "Reply to send via SMTP (Winlink)",
+          description:
+            "Reply to send via SMTP (Winlink), or failed message on error",
         },
         inreach: {
           datatype: "object",
-          description: "Reply to send via InReach",
-        },
-        error: {
-          datatype: "object",
-          description: "Failed messages (e.g., missing channel)",
+          description: "Reply to send via InReach, or failed message on error",
         },
       },
     });
@@ -43,16 +40,16 @@ class ReplyDispatcher extends Component {
 
     const msg = input.getData("in");
 
-    // Check for failed messages
+    // Check for failed messages - pass through to ErrorLogger
     if (failed(msg)) {
-      output.send({ error: msg });
+      output.send({ smtp: msg });
       return output.sendDone();
     }
 
     // Validate channel is present
     if (!msg.channel) {
       fail(msg, new Error("Missing channel in reply message"));
-      output.send({ error: msg });
+      output.send({ smtp: msg });
       return output.sendDone();
     }
 
@@ -68,7 +65,7 @@ class ReplyDispatcher extends Component {
 
       default:
         fail(msg, new Error(`Unrecognized channel: ${msg.channel}`));
-        output.send({ error: msg });
+        output.send({ smtp: msg });
         break;
     }
 

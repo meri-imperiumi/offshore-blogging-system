@@ -136,7 +136,7 @@ describe("InReachSender component", () => {
 
     const { received, sends } = await runScenario({
       client,
-      port: "error",
+      port: "out",
       controls: {}, // no replyaddress
       msg: {
         errors: [],
@@ -162,7 +162,7 @@ describe("InReachSender component", () => {
 
     const { received, sends } = await runScenario({
       client,
-      port: "error",
+      port: "out",
       controls: { replyaddress: "cloud@boat.example" },
       msg: {
         errors: [],
@@ -188,7 +188,7 @@ describe("InReachSender component", () => {
 
     const { received, sends } = await runScenario({
       client,
-      port: "error",
+      port: "out",
       controls: { replyaddress: "cloud@boat.example" },
       msg: {
         errors: [],
@@ -319,7 +319,7 @@ describe("InReachSender component", () => {
 
     const { received } = await runScenario({
       client,
-      port: "error",
+      port: "out",
       controls: { replyaddress: "cloud@boat.example", delayms: 10 },
       msg: {
         errors: [],

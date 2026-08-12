@@ -47,11 +47,24 @@ const UNRECOVERABLE_CODES = new Set([
   "SESSION_EXPIRED",
   "BAD_URL",
   "NOT_CONFIGURED",
-  // 200 with an HTML body: Garmin served a login/error page instead of
-  // honouring the POST. Under the no-session model this is the same class of
-  // "reply channel dead" as a 401 — the GUID is no longer usable.
   "BAD_RESPONSE",
+  "AUTH_DENIED", // Authorization/security events
 ]);
+
+// Alert prefix based on code type
+const ALERT_PREFIXES = {
+  SESSION_EXPIRED: "[InReach Alert]",
+  BAD_URL: "[InReach Alert]",
+  NOT_CONFIGURED: "[InReach Alert]",
+  BAD_RESPONSE: "[InReach Alert]",
+  AUTH_DENIED: "[AUTH ALERT]",
+  GIT_PUSH_FAILED: "[SYSTEM ALERT]", // Future extension
+  BLOG_DECODE_CRC_MISMATCH: "[SYSTEM ALERT]",
+  GIT_COMMIT_FAILED: "[SYSTEM ALERT]",
+  GIT_MERGE_CONFLICT: "[SYSTEM ALERT]",
+};
+
+const DEFAULT_PREFIX = "[ALERT]";
 
 class AlertComposer extends Component {
   constructor() {
@@ -170,19 +183,72 @@ class AlertComposer extends Component {
 /**
  * Render a human-readable, actionable alert body. First line is the subject
  * (SmtpResponder takes notifyText.split("\n")[0]); the rest is the body.
+ *
+ * Distinguish between:
+ * 1. Failures AFTER success (blog published, GRIB saved, status built) - show context
+ * 2. Failures BEFORE success (bad URL, no config, auth denied, CRC mismatch) - no context
  */
 function renderAlert(code, err, msg) {
-  const lines = [
-    `[InReach Alert] ${code}`,
-    "",
-    err.message || "(no detail)",
-    "",
-    `Original request: intent=${msg.intent || "UNKNOWN"}, identity=${msg.identityHash || "UNKNOWN"}`,
-  ];
+  const prefix = ALERT_PREFIXES[code] || DEFAULT_PREFIX;
+  const lines = [`${prefix} ${code}`, "", err.message || "(no detail)"];
+
+  // Show all errors in the message, not just the last one
+  if (msg.errors && msg.errors.length > 1) {
+    lines.push("");
+    lines.push(`All errors (${msg.errors.length}):`);
+    for (let i = 0; i < msg.errors.length; i++) {
+      const e = msg.errors[i];
+      const prefix = i === msg.errors.length - 1 ? "→ " : "  ";
+      const errorLine = e.code
+        ? `${prefix}[${e.code}] ${e.message}`
+        : `${prefix}${e.message}`;
+      lines.push(errorLine);
+    }
+  }
+
+  // Check if this message has evidence of prior success
+  // Success markers: notifyText, transmissionId, filename from upstream components
+  const hasSuccessContext =
+    msg.notifyText ||
+    msg.transmissionId ||
+    (msg.filename && !code.includes("BAD_URL"));
+
+  // Add context based on alert type
+  if (code === "AUTH_DENIED") {
+    lines.push("");
+    lines.push(`Identity: ${msg.identityHash || "UNKNOWN"}`);
+    if (msg.permission) {
+      lines.push(`Permission requested: ${msg.permission}`);
+    }
+  } else if (hasSuccessContext) {
+    lines.push("");
+    lines.push(`What succeeded (but couldn't confirm):`);
+    if (msg.notifyText) {
+      lines.push(msg.notifyText);
+    }
+    if (msg.filename) {
+      lines.push(`Blog post: ${msg.filename}`);
+    }
+    if (msg.transmissionId) {
+      lines.push(`GRIB transmission ID: ${msg.transmissionId}`);
+    }
+    if (msg.payload && !String(msg.payload).startsWith("InReach:")) {
+      // For status replies, show the full payload
+      lines.push(`\nStatus info:\n${String(msg.payload)}`);
+    }
+  }
+
+  lines.push("");
+  lines.push(`Original intent: ${msg.intent || "UNKNOWN"}`);
+  if (code !== "AUTH_DENIED") {
+    // Already shown above for auth alerts
+    lines.push(`Identity: ${msg.identityHash || "UNKNOWN"}`);
+  }
   if (msg.replyTo) {
-    lines.push(`Original reply URL: ${msg.replyTo}`);
+    lines.push(`Reply URL: ${msg.replyTo}`);
   }
   return lines.join("\n");
 }
 
 exports.getComponent = () => new AlertComposer();
+exports.renderAlert = renderAlert;

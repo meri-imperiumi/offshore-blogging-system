@@ -112,7 +112,12 @@ Reassembler OUT -> IN Router
 
 # Router ERROR handles failed(msg) IPs - replies to sender
 Router ERROR -> IN ReplyDispatcher(ReplyDispatcher)
+
+# ReplyDispatcher routes failed messages to SMTP (ErrorLogger checks failed(msg))
+ReplyDispatcher SMTP -> IN ErrorLogger(ErrorLogger)
 Router MISSED -> IN ErrorLogger(ErrorLogger)
+# ReplyDispatcher also routes its failed messages to ErrorLogger
+ReplyDispatcher SMTP -> IN ErrorLogger(ErrorLogger)
 
 # 4. Application Logic: Blog Pipeline
 'blog:publish' -> PERMISSION BlogAuth(DacarAuthorizer)
@@ -120,6 +125,7 @@ Router OUT[0] -> IN BlogAuth
 BlogAuth DENIED -> IN ReplyDispatcher
 
 BlogAuth OUT -> IN BlogDecoder(BlogDecoder)
+BlogAuth DENIED -> IN AlertComposer(AlertComposer)
 BlogDecoder OUT -> IN GitPublisher(GitPublisher)
 # BlogDecoder ERROR (bad CRC, dict version mismatch, etc.) goes to ReplyDispatcher
 BlogDecoder OUT -> IN ReplyDispatcher
@@ -153,7 +159,6 @@ SaildocsMatcher DIRECT -> IN GribChunker(GribChunker)
 SaildocsMatcher OUT -> IN ReplyDispatcher(ReplyDispatcher)
 ReplyDispatcher SMTP -> IN ImapAcker(ImapAcker)
 ReplyDispatcher INREACH -> IN ImapAcker(ImapAcker)
-ReplyDispatcher ERROR -> IN ErrorLogger(ErrorLogger)
 
 # 7. System Commands & The GRIB Gatekeeper
 'sys:command' -> PERMISSION SysAuth(DacarAuthorizer)
@@ -189,8 +194,10 @@ ReplyDispatcher INREACH -> IN InReachSender(InReachSender)
 # rate-limited (max one per error code per hour) and filters to unrecoverable
 # codes only; transient failures (rate limit, network) are logged but not
 # paged. alertaddress is deployment config (set at runtime, like smtp creds).
-InReachSender ERROR -> IN ErrorLogger(ErrorLogger)
-InReachSender ERROR -> IN AlertComposer(AlertComposer)
+# InReachSender now follows noflo-assembly pattern: failed messages go
+# through the out port, not a dedicated error port.
+InReachSender OUT -> IN ErrorLogger(ErrorLogger)
+InReachSender OUT -> IN AlertComposer(AlertComposer)
 AlertComposer OUT -> IN SmtpResponder
 
 # 10. (removed) Periodic Hi-Fi Sync — no longer needed in the cloud. Hi-fi

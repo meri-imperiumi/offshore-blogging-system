@@ -1,4 +1,4 @@
-const { Component, failed } = require("noflo-assembly");
+const { Component, failed, fail } = require("noflo-assembly");
 const SmtpClient = require("../lib/SmtpClient");
 
 /**
@@ -55,11 +55,8 @@ class SmtpResponder extends Component {
       outPorts: {
         out: {
           datatype: "object",
-          description: "Confirmation message (passed through)",
-        },
-        error: {
-          datatype: "object",
-          description: "Send failures",
+          description:
+            "Confirmation message (passed through), or failed message on error",
         },
       },
     });
@@ -104,14 +101,11 @@ class SmtpResponder extends Component {
     // `to` (and `replyTo`) explicitly; notification replies set only `replyTo`.
     const recipient = msg.to || msg.replyTo;
     if (!recipient) {
-      return output.send({
-        error: {
-          ...msg,
-          errors: [
-            { message: "SMTP send failed: no recipient (msg.to/msg.replyTo)" },
-          ],
-        },
-      });
+      fail(
+        msg,
+        new Error("SMTP send failed: no recipient (msg.to/msg.replyTo)"),
+      );
+      return output.sendDone(msg);
     }
 
     // Body: honor an explicit `body` (Saildocs request, pre-terminated), then
@@ -161,17 +155,10 @@ class SmtpResponder extends Component {
         output.sendDone(msg);
       })
       .catch((err) => {
-        // Send failed - return on error port. sendDone (not just send) so the
-        // activation is resolved and the network can deactivate cleanly.
-        const errorMsg = {
-          errors: [{ message: `SMTP send failed: ${err.message}` }],
-          identityHash: msg.identityHash,
-          replyTo: msg.replyTo,
-          channel: msg.channel,
-          intent: msg.intent,
-          payload: msg.payload,
-        };
-        output.sendDone({ error: errorMsg });
+        // Send failed - mark as failed and pass through.
+        // sendDone (not just send) so the activation resolves cleanly.
+        fail(msg, new Error(`SMTP send failed: ${err.message}`));
+        output.sendDone(msg);
       });
   }
 }

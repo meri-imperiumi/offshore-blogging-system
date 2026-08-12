@@ -76,11 +76,8 @@ class InReachSender extends Component {
       outPorts: {
         out: {
           datatype: "object",
-          description: "Success confirmation once all chunks transmitted",
-        },
-        error: {
-          datatype: "object",
-          description: "Failed assembly message on transmission error",
+          description:
+            "Success confirmation once all chunks transmitted, or failed message on error",
         },
       },
       validates: {
@@ -154,7 +151,7 @@ class InReachSender extends Component {
           "NOT_CONFIGURED",
         ),
       );
-      return output.sendDone({ error: msg });
+      return output.sendDone(msg);
     }
 
     // The Garmin reply URL is carried per-message in replyTo.
@@ -168,7 +165,7 @@ class InReachSender extends Component {
           "BAD_URL",
         ),
       );
-      return output.sendDone({ error: msg });
+      return output.sendDone(msg);
     }
 
     // Normalize payload: accept a single string or an array of chunks.
@@ -181,7 +178,7 @@ class InReachSender extends Component {
         msg,
         new Error("Payload must be a non-empty array of message chunks"),
       );
-      return output.sendDone({ error: msg });
+      return output.sendDone(msg);
     }
 
     // With the Unified Compact Header Protocol, multi-chunk payloads from
@@ -234,7 +231,7 @@ class InReachSender extends Component {
         err.status,
       );
       fail(msg, wrapped);
-      output.sendDone({ error: msg });
+      output.sendDone(msg);
       return;
     }
 

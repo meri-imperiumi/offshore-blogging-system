@@ -302,13 +302,14 @@ describe("AlertComposer component", () => {
         code: "SESSION_EXPIRED",
         intent: "GRIB",
         identityHash: "boat-123",
+        replyTo: "https://explore.garmin.com/TextMessage/TxtMsg?extId=abc",
       }),
       controls: { alertaddress: "ops@example.com" },
     });
     assert.ok(received);
     const body = received.notifyText;
-    assert.match(body, /intent=GRIB/);
-    assert.match(body, /identity=boat-123/);
+    assert.match(body, /Original intent: GRIB/);
+    assert.match(body, /Identity: boat-123/);
     assert.match(body, /explore\.garmin\.com/);
   });
 });

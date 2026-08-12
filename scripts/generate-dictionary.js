@@ -251,10 +251,10 @@ function generateDictionary(metadataList, bodyList) {
 }
 
 /**
- * Convert dictionary to binary format usable by zlib
+ * Convert dictionary string to binary format usable by zlib
  */
-function dictionaryToBinary(dictionaryPath) {
-  return zlib.deflateSync(dictionaryPath);
+function dictionaryToBinary(dictionaryString) {
+  return zlib.deflateSync(Buffer.from(dictionaryString, "utf-8"));
 }
 
 /**

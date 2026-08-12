@@ -217,7 +217,9 @@ class DacarAuthorizer extends Component {
   }
 
   deny(msg, reason, output) {
-    fail(msg, new Error(reason));
+    const err = new Error(reason);
+    err.code = "AUTH_DENIED";
+    fail(msg, err);
     msg.intent = "NOTIFY";
     msg.payload = `Access denied: ${reason}`;
     return output.sendDone({ denied: msg });

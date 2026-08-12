@@ -35,7 +35,8 @@ class ParserRouter extends Component {
         },
         error: {
           datatype: "object",
-          description: "Failed messages",
+          description:
+            "Failed messages (sent to ReplyDispatcher for error replies)",
         },
         missed: {
           datatype: "object",

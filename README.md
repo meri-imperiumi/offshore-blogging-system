@@ -67,6 +67,15 @@ export SMTP_PASSWORD={{ YOUR_PASSWORD }}
 # InReach reply configuration
 export INREACH_REPLY_ADDRESS=cloud@boat.example.com
 
+# Operator alerting (SMTP email for unrecoverable failures)
+# Sent via SmtpResponder, NOT through InReachSender (prevents circular failure)
+# Alerted codes:
+#   SESSION_EXPIRED, BAD_URL, NOT_CONFIGURED, BAD_RESPONSE → [InReach Alert]
+#   AUTH_DENIED (spoofing/authorization failures)           → [AUTH ALERT]
+# Transient codes (RATE_LIMITED, NETWORK_ERROR, API_FAILURE) are logged only
+# Rate limited: max 1 alert per error code per hour (configurable)
+export ALERT_ADDRESS=operator@example.com
+
 # Dacar authorization store (operator bootstraps with the `dacar` CLI)
 export DACAR_HOME=~/.dacar
 # Optional: explicit path to the `dacar` binary if not on PATH
