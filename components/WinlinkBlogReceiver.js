@@ -115,13 +115,18 @@ class WinlinkBlogReceiver extends Component {
    *   Filename: <filename>
    *   Date: <date>
    *   Images: <count>
-   *   Image_0: <base64>
-   *   Image_1: <base64>
+   *   Image_0: <path>|<base64>
+   *   Image_1: <path>|<base64>
    *   ...
    *   (blank line)
    *   Title
    *   (blank line)
    *   Body
+   *
+   * The path is the image reference as it appears in the markdown body
+   * (e.g., "../2026/20260716_123456.webp"), so imageBuffers[i]
+   * matches the i-th markdown image reference, matching GitPublisher's
+   * expectation.
    *
    * @param {string} content - Content between BEGIN/END BLOG POST markers
    * @returns {Object|null} Parsed blog post or null on failure
@@ -156,6 +161,11 @@ class WinlinkBlogReceiver extends Component {
       const dateMatch = line.match(/^Date:\s*(.+)$/);
       if (dateMatch) {
         date = dateMatch[1].trim();
+        // Normalize to ISO date (YYYY-MM-DD) - strip time if present
+        const simpleDate = date.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (simpleDate) {
+          date = simpleDate[1];
+        }
         continue;
       }
 
@@ -166,15 +176,20 @@ class WinlinkBlogReceiver extends Component {
         continue;
       }
 
-      // Image_N: <base64>
+      // Image_N: <path>|<base64>
       const imgMatch = line.match(/^Image_(\d+):\s*(.+)$/);
       if (imgMatch) {
         const idx = parseInt(imgMatch[1], 10);
-        const base64 = imgMatch[2].trim();
-        try {
-          images[idx] = Buffer.from(base64, "base64");
-        } catch (err) {
-          // Invalid base64 - skip
+        const fullPath = imgMatch[2].trim();
+        const pipeIdx = fullPath.indexOf("|");
+        if (pipeIdx !== -1) {
+          const path = fullPath.slice(0, pipeIdx);
+          const base64 = fullPath.slice(pipeIdx + 1);
+          try {
+            images[idx] = Buffer.from(base64, "base64");
+          } catch (_err) {
+            // Invalid base64 - skip
+          }
         }
       }
     }

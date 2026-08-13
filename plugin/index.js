@@ -468,7 +468,26 @@ async function loadReticulumIdentity(app, identityPath) {
 
 // Sign message for Winlink transmission using Reticulum Ed25519
 // Formats the blog post with filename, date, and images for cloud server processing
-async function signForWinlink(filename, title, date, body, images, identity) {
+//
+// Winlink email format:
+//   Filename: <filename> - where to write the .md file (_logs/filename.md)
+//   Date: <date> - Jekyll front matter 'created:' field
+//   Images: <count> - number of images
+//   Image_0: <path>|<base64> - path from markdown (e.g., ../2026/img.webp) and image data
+//   Image_1: <path>|<base64>
+//   ...
+//   (blank line)
+//   <title> - Jekyll front matter 'title:' field (single line)
+//   (blank line)
+//   <body> - markdown with original image paths
+async function signForWinlink(
+  filename,
+  title,
+  date,
+  body,
+  imageInfos,
+  identity,
+) {
   if (!identity) {
     throw new Error("No identity provided for signing");
   }
@@ -478,30 +497,29 @@ async function signForWinlink(filename, title, date, body, images, identity) {
   // Get identity hash (SHA-256 truncated to 16 bytes, hex-encoded)
   const identityHashHex = toHex(identity.identityHash);
 
-  // Build content block with structured header and post content
-  // Format:
-  //   Filename: <filename>
-  //   Date: <date>
-  //   Images: <count>
-  //   Image_0: <base64>
-  //   Image_1: <base64>
-  //   ...
-  //   (blank line)
-  //   Title
-  //   (blank line)
-  //   Body
-  let contentHeader = `Filename: ${filename}\n`;
-  contentHeader += `Date: ${date}\n`;
-  contentHeader += `Images: ${images.length}\n`;
+  // Normalize date to ISO format (YYYY-MM-DD) for Jekyll front matter
+  // Accepts both simple dates (2026-07-16) and ISO timestamps (2026-07-16T16:35:17-10:00)
+  let normalizedDate = date;
+  const dateMatch = date.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (dateMatch) {
+    normalizedDate = dateMatch[1];
+  }
 
-  // Add base64-encoded images
-  for (let i = 0; i < images.length; i++) {
-    const imgBuffer = images[i];
-    const base64Data = imgBuffer.toString("base64");
-    contentHeader += `Image_${i}: ${base64Data}\n`;
+  // Build content header with structured fields
+  let contentHeader = `Filename: ${filename}\n`;
+  contentHeader += `Date: ${normalizedDate}\n`;
+  contentHeader += `Images: ${imageInfos.length}\n`;
+
+  // Add images with their markdown paths (same order as body references)
+  for (let i = 0; i < imageInfos.length; i++) {
+    const imgInfo = imageInfos[i];
+    const path = imgInfo.originalPath; // Path as it appears in markdown
+    const base64Data = imgInfo.data.toString("base64");
+    contentHeader += `Image_${i}: ${path}|${base64Data}\n`;
   }
 
   // Blank line separates header from post content
+  // Format: title on one line, blank line, then body
   const content = `${contentHeader}\n${title}\n\n${body}`;
 
   // Sign the content using Ed25519
@@ -712,12 +730,10 @@ module.exports = (app) => {
               }
             }
 
-            // Collect image buffers for Winlink (using already-compressed lo-fi images)
+            // Collect image infos for Winlink (using already-compressed lo-fi images)
             const winlinkImages = [];
             if (result.selectedImages > 0 && result.imageInfos) {
-              for (const imgInfo of result.imageInfos) {
-                winlinkImages.push(imgInfo.data);
-              }
+              winlinkImages.push(...result.imageInfos);
             }
 
             const signed = await signForWinlink(
@@ -914,7 +930,11 @@ module.exports = (app) => {
             await fs.access(image.resolvedPath);
             // Use a generous budget for manual Winlink signing
             const imgResult = await compressImage(image.resolvedPath, 20);
-            winlinkImages.push(imgResult.data);
+            winlinkImages.push({
+              alt: image.alt,
+              originalPath: image.path,
+              ...imgResult,
+            });
           } catch (_error) {
             // Image access error - skip
             app.debug(

@@ -53,6 +53,7 @@ test("WinlinkBlogReceiver passes through Winlink without BLOG POST marker", () =
 
 test("WinlinkBlogReceiver parses Winlink blog post without images", () => {
   const component = getComponent();
+
   const content = `Filename: 2024-08-12.md
 Date: 2024-08-12
 Images: 0
@@ -101,8 +102,8 @@ test("WinlinkBlogReceiver parses Winlink blog post with images", () => {
   const content = `Filename: 2024-08-12.md
 Date: 2024-08-12
 Images: 2
-Image_0: ${fakeImage.toString("base64")}
-Image_1: ${fakeImage.toString("base64")}
+Image_0: ../2024/img1.webp|${fakeImage.toString("base64")}
+Image_1: ../2024/img2.webp|${fakeImage.toString("base64")}
 
 Test Post Title
 
@@ -205,4 +206,35 @@ Third paragraph.`;
     outputSent.payload.bodyMarkdown,
     "First paragraph.\n\nSecond paragraph.\n\nThird paragraph.",
   );
+});
+
+test("WinlinkBlogReceiver normalizes date from ISO timestamp", () => {
+  const component = getComponent();
+  const content = `Filename: 2024-08-12.md
+Date: 2024-08-12T16:35:17-10:00
+Images: 0
+
+Test Post
+
+Body here.`;
+
+  const input = {
+    hasData: (port) => port === "in",
+    getData: () => ({
+      channel: "winlink",
+      payload: `---BEGIN BLOG POST---\n${content}\n---END BLOG POST---`,
+      identityHash: "test123",
+    }),
+  };
+
+  let outputSent = null;
+  const output = {
+    sendDone: (data) => {
+      outputSent = data;
+    },
+  };
+
+  component.handle(input, output);
+  assert.ok(outputSent);
+  assert.strictEqual(outputSent.payload.date, "2024-08-12");
 });
