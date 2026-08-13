@@ -13,33 +13,37 @@
 // Preset definitions. halfLat/halfLon define the half-size of the bounding
 // box in degrees, centered on the boat's position. The grid resolution
 // (gridLat,gridLon) is in degrees between data points — smaller = denser.
+//
+// Note: All presets default to ECMWF via Saildocs. For future local ECMWF
+// handling (when a local API is implemented), use the "local:" prefix:
+//   local:ecmwf:area|grid|hours|params
 const PRESETS = {
   "local-wind": {
     label: "Local wind forecast (4 timepoints)",
-    model: "gfs",
+    model: "ecmwf",
     halfLat: 3,
     halfLon: 4,
     grid: "2,2",
     hours: "12,24,36,48",
-    params: "wind",
+    params: "WIND",
   },
   "local-wind-pressure": {
     label: "Local wind + pressure (4 timepoints)",
-    model: "gfs",
+    model: "ecmwf",
     halfLat: 5,
     halfLon: 6,
     grid: "4,4",
     hours: "12,24,36,48",
-    params: "wind,press",
+    params: "WIND,PRMSL",
   },
   extended: {
     label: "Extended forecast (2 timepoints, wide area)",
-    model: "gfs",
+    model: "ecmwf",
     halfLat: 10,
     halfLon: 12,
     grid: "8,8",
     hours: "12,48",
-    params: "wind,press",
+    params: "WIND,PRMSL",
   },
 };
 

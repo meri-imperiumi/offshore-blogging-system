@@ -55,7 +55,7 @@ describe("SaildocsArea", () => {
     });
 
     it("reproduces the old hardcoded preset area from the right position", () => {
-      // Old preset: gfs:24n,34n,72w,60w|2,2|12,24,36,48|wind
+      // Old preset: ecmwf:24n,34n,72w,60w|4,4|12,24,36,48|WIND,PRMSL
       // Center = 29N, 66W, halfLat=5, halfLon=6
       const area = buildArea(29, -66, 5, 6);
       assert.strictEqual(area, "24n,34n,72w,60w");
@@ -65,17 +65,20 @@ describe("SaildocsArea", () => {
   describe("buildRequest", () => {
     it("builds a full request string from the local-wind preset", () => {
       const req = buildRequest("local-wind", 29, -66);
-      assert.strictEqual(req, "gfs:26n,32n,70w,62w|2,2|12,24,36,48|wind");
+      assert.strictEqual(req, "ecmwf:26n,32n,70w,62w|2,2|12,24,36,48|WIND");
     });
 
     it("builds a full request string from the local-wind-pressure preset", () => {
       const req = buildRequest("local-wind-pressure", 29, -66);
-      assert.strictEqual(req, "gfs:24n,34n,72w,60w|4,4|12,24,36,48|wind,press");
+      assert.strictEqual(
+        req,
+        "ecmwf:24n,34n,72w,60w|4,4|12,24,36,48|WIND,PRMSL",
+      );
     });
 
     it("builds a full request string from the extended preset", () => {
       const req = buildRequest("extended", 0, 0);
-      assert.strictEqual(req, "gfs:10s,10n,12w,12e|8,8|12,48|wind,press");
+      assert.strictEqual(req, "ecmwf:10s,10n,12w,12e|8,8|12,48|WIND,PRMSL");
     });
 
     it("returns null for an unknown preset", () => {
@@ -122,7 +125,7 @@ describe("SaildocsArea", () => {
     it("builds a full route request string from the local-wind preset", () => {
       // Boat 29N,66W → dest 35N,70W, margin 2 → area 27n,37n,72w,64w
       const req = buildRouteRequest("local-wind", 29, -66, 35, -70, 2);
-      assert.strictEqual(req, "gfs:27n,37n,72w,64w|2,2|12,24,36,48|wind");
+      assert.strictEqual(req, "ecmwf:27n,37n,72w,64w|2,2|12,24,36,48|WIND");
     });
 
     it("reuses the preset's grid/hours/params (extended preset)", () => {
@@ -130,7 +133,7 @@ describe("SaildocsArea", () => {
       // south = -3 → 3s, north = 13 → 13n
       // west  = -3 → 3w, east = 23 → 23e
       const req = buildRouteRequest("extended", 0, 0, 10, 20, 3);
-      assert.strictEqual(req, "gfs:3s,13n,3w,23e|8,8|12,48|wind,press");
+      assert.strictEqual(req, "ecmwf:3s,13n,3w,23e|8,8|12,48|WIND,PRMSL");
     });
 
     it("returns null for an unknown preset", () => {

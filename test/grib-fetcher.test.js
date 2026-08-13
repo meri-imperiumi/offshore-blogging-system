@@ -241,4 +241,49 @@ describe("GribFetcher", () => {
       "body must end with the dash terminator (and nothing after it)",
     );
   });
+
+  it("rejects 'local:' prefixed queries (reserved for future local API)", async () => {
+    // The 'local:' prefix is reserved for future local ECMWF API handling.
+    // For now, it should fail without emitting to OUTBOX.
+    const msg = {
+      errors: [],
+      identityHash: "TEST_IDENTITY",
+      replyTo: "boat@example.com",
+      channel: "winlink",
+      intent: "GRIB",
+      payload: "local:ecmwf:19N,35N,123W,102W|0.25,0.25|0,3..72|PRMSL,WIND",
+    };
+
+    const { data } = await runScenario({ msg, port: "outbox", timeout: 1000 });
+    assert.strictEqual(
+      data,
+      null,
+      "local: prefixed query should not emit to OUTBOX",
+    );
+  });
+
+  it("routes bare ECMWF queries to Saildocs (no OUTBOX for local path)", async () => {
+    // Bare ECMWF queries go to Saildocs by default - the 'local:' prefix is
+    // required for future local API handling.
+    const msg = {
+      errors: [],
+      identityHash: "TEST_IDENTITY",
+      replyTo: "https://inreachlink.com/abc123",
+      channel: "inreach",
+      intent: "GRIB",
+      payload: "ecmwf:20s,14s,155w,147w|2,2|12,24,36,48|WIND",
+    };
+
+    const { data } = await runScenario({ msg });
+    assert.ok(data, "should emit on OUTBOX for bare ECMWF query");
+    assert.strictEqual(
+      data.to,
+      "query@saildocs.com",
+      "bare ECMWF query should default to query@saildocs.com",
+    );
+    assert.ok(
+      data.body.includes("ecmwf:20s,14s,155w,147w|2,2|12,24,36,48|WIND"),
+      "ECMWF query should be preserved verbatim",
+    );
+  });
 });

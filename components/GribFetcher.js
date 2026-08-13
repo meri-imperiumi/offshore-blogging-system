@@ -110,8 +110,13 @@ class GribFetcher extends Component {
    *   params — comma-separated words (wind, press, ...)
    *
    * Must have at least 3 pipe-delimited sections and a lat/lon token.
+   *
+   * Note: Does NOT match "local:" prefixed queries, which are reserved for
+   * future local API handling (e.g., "local:ecmwf:...").
    */
   isSaildocsQuery(line) {
+    // "local:" prefix is reserved for future local API handling
+    if (/^local:/i.test(line)) return false;
     if (!/^[a-z]+:/i.test(line)) return false;
     const pipes = (line.match(/\|/g) || []).length;
     if (pipes < 3) return false;
@@ -196,9 +201,19 @@ class GribFetcher extends Component {
 
   handleLocalFetch(msg, _payload, output) {
     // TODO: Implement actual local GRIB API call
-    // For now, return a mock response
+    //
+    // Expected format: "local:<model>:area|grid|hours|params"
+    // e.g., "local:ecmwf:19N,35N,123W,102W|0.25,0.25|0,3..72|PRMSL,WIND"
+    //
+    // For now, all local requests fail with a clear error message directing
+    // users to use Saildocs queries instead.
 
-    fail(msg, new Error("Local GRIB API not yet implemented - use Saildocs"));
+    fail(
+      msg,
+      new Error(
+        "Local GRIB API not yet implemented - use Saildocs (bare queries default to query@saildocs.com)",
+      ),
+    );
     // GribFetcher has no `out`/error port (the production graph drops
     // failures), so just deactivate without forwarding.
     return output.done();
