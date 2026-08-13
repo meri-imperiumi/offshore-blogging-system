@@ -380,7 +380,7 @@ class GitPublisher extends Component {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
 
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${bannerHeight}"><rect width="${width}" height="${bannerHeight}" fill="rgba(0,0,0,0.55)"/><text x="${width / 2}" y="${bannerHeight / 2}" fill="#ffffff" font-family="sans-serif" font-size="${fontSize}" font-weight="bold" text-anchor="middle" dominant-baseline="central">${escaped}</text></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${bannerHeight}" viewBox="0 0 ${width} ${bannerHeight}"><rect width="${width}" height="${bannerHeight}" fill="rgba(0,0,0,0.55)"/><text x="${width / 2}" y="${bannerHeight / 2}" fill="#ffffff" font-family="sans-serif" font-size="${fontSize}" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${escaped}</text></svg>`;
 
     return image
       .composite([{ input: Buffer.from(svg), gravity: "north" }])
