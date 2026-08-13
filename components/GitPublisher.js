@@ -253,6 +253,9 @@ class GitPublisher extends Component {
         "intent",
         "notifyText",
         "partType",
+        "replyTo",
+        "channel",
+        "identityHash",
       ]);
       confirmMsg.intent = "NOTIFY";
       confirmMsg.payload = `Blog post "${blogData.title}" written to disk${
