@@ -202,8 +202,10 @@ class InReachReceiver extends Component {
       return "GRIB";
     }
 
-    // System commands: STATUS, YES <gateId>, CANCEL <gateId>.
+    // System commands: PING, STATUS, YES <gateId>, CANCEL <gateId>.
+    // PING/STATUS are standalone (no argument); YES/CANCEL take a gate id.
     if (
+      lower.startsWith("ping") ||
       lower.startsWith("status") ||
       lower.startsWith("yes ") ||
       lower.startsWith("cancel ")

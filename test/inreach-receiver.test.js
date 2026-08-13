@@ -111,6 +111,38 @@ describe("InReachReceiver", () => {
     assert.ok(data.raw, "raw email should be carried through unchanged");
   });
 
+  it("passes through a PING command as intent SYS", async () => {
+    const msg = {
+      errors: [],
+      identityHash: "dev1",
+      replyTo: "https://explore.garmin.com/TextMessage/TxtMsg?extId=abc",
+      channel: "inreach",
+      intent: null,
+      payload: "PING",
+    };
+    const { data } = await runScenario({ msg });
+    assert.ok(data, "should emit on out");
+    assert.strictEqual(data.intent, "SYS");
+    // Payload passes through unchanged so CommandRouter can route on it.
+    assert.strictEqual(data.payload, "PING");
+  });
+
+  it("detects PING despite InReach boilerplate", async () => {
+    // InReach appends "View the location..." after the user's text. Intent
+    // detection must use the first line only, same as for GRIB queries.
+    const msg = {
+      errors: [],
+      identityHash: "dev1",
+      replyTo: "https://explore.garmin.com/TextMessage/TxtMsg?extId=abc",
+      channel: "inreach",
+      intent: null,
+      payload: "PING\n\nView the location or send a reply to the boat:",
+    };
+    const { data } = await runScenario({ msg });
+    assert.ok(data, "should emit on out");
+    assert.strictEqual(data.intent, "SYS");
+  });
+
   it("passes through a STATUS command as intent SYS", async () => {
     const msg = {
       errors: [],
