@@ -174,9 +174,11 @@ Router OUT[3] -> IN SysAuth
 SysAuth DENIED -> IN ReplyDispatcher
 
 SysAuth OUT -> IN CmdRouter(CommandRouter)
-'GATE,STATUS' -> ROUTES CmdRouter
+'GATE,STATUS,PING' -> ROUTES CmdRouter
 CmdRouter OUT[0] -> COMMAND Gate(GribGate)
 CmdRouter OUT[1] -> IN StatusBuilder(StatusBuilder)
+CmdRouter OUT[2] -> IN PingHandler(PingHandler)
+PingHandler OUT -> IN ReplyDispatcher
 CmdRouter MISSED -> IN ErrorLogger
 
 GribChunker OUT -> IN Gate

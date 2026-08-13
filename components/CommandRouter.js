@@ -6,7 +6,8 @@ const { Component, failed } = require("noflo-assembly");
  *
  * Logic:
  * - Parses payload text into a verb
- * - Routes via array-port pattern (GATE,STATUS)
+ * - Routes via array-port pattern (GATE,STATUS,PING)
+ * - "PING" routes to OUT[2]
  * - "YES <gateId>" or "CANCEL <gateId>" routes to OUT[0] with parsed gateId/action
  * - "STATUS" routes to OUT[1]
  * - Unknown commands route to MISSED
@@ -80,6 +81,16 @@ class CommandRouter extends Component {
         const gateId = parts[1] || null;
         msg.commandAction = verb;
         msg.gateId = gateId;
+        return output.sendDone({
+          out: new IP("data", msg, { index: routeIndex }),
+        });
+      }
+    }
+
+    // Check for PING command
+    if (verb === "PING") {
+      const routeIndex = this.routes.indexOf("PING");
+      if (routeIndex !== -1) {
         return output.sendDone({
           out: new IP("data", msg, { index: routeIndex }),
         });
