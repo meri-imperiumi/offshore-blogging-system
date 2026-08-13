@@ -252,6 +252,7 @@ class MessageReassembler extends Component {
       msg.replyTo,
       msg.channel,
       payloadOnly,
+      msg.imapUid,
     );
   }
 
@@ -262,6 +263,11 @@ class MessageReassembler extends Component {
     // Concatenate chunks in order
     const reassembledPayload = chunks.map((c) => c.payload).join("");
 
+    // Collect IMAP UIDs from all chunks for ACKing
+    const ackUids = chunks
+      .map((c) => c.imap_uid)
+      .filter((uid) => uid !== null && uid !== undefined);
+
     // Update msg with reassembled payload
     msg.payload = reassembledPayload;
 
@@ -269,6 +275,11 @@ class MessageReassembler extends Component {
     msg.partType = headers.partType;
     msg.transmissionId = headers.transmissionId;
     msg.totalChunks = headers.total;
+
+    // Add UIDs for downstream components to ACK all contributing emails
+    if (ackUids.length > 0) {
+      msg.ackUids = ackUids;
+    }
 
     // Delete the buffer
     this.db.deleteBufferChunks(

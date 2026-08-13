@@ -90,7 +90,13 @@ class BlogDecoder extends Component {
 
     let entry = this.pending.get(transmissionId);
     if (!entry) {
-      entry = { text: null, images: new Map(), textChunks: 0, imageChunks: 0 };
+      entry = {
+        text: null,
+        images: new Map(),
+        textChunks: 0,
+        imageChunks: 0,
+        ackUids: [],
+      };
       this.pending.set(transmissionId, entry);
     }
 
@@ -108,11 +114,23 @@ class BlogDecoder extends Component {
       }
       entry.text = decoded;
       entry.textChunks = msg.totalChunks || 0;
+      // Collect IMAP UIDs from this part for ACKing
+      if (msg.ackUids && Array.isArray(msg.ackUids)) {
+        entry.ackUids.push(...msg.ackUids);
+      } else if (msg.imapUid) {
+        entry.ackUids.push(msg.imapUid);
+      }
     } else if (/^[A-Z]$/.test(partType)) {
       // Image part: base64-decode to the raw (WebP) buffer.
       // Single letter types: I, J, K for different images
       entry.images.set(partType, Buffer.from(msg.payload, "base64"));
       entry.imageChunks += msg.totalChunks || 0;
+      // Collect IMAP UIDs from this part for ACKing
+      if (msg.ackUids && Array.isArray(msg.ackUids)) {
+        entry.ackUids.push(...msg.ackUids);
+      } else if (msg.imapUid) {
+        entry.ackUids.push(msg.imapUid);
+      }
     } else {
       // Unknown part type reaching the blog pipeline — fail it so
       // ReplyDispatcher can send an error back to the sender.
@@ -175,6 +193,11 @@ class BlogDecoder extends Component {
     // BlogAckBuilder, ReplyDispatcher).
     msg.intent = msg.intent || "BLOG";
     msg.totalChunks = entry.textChunks + entry.imageChunks;
+
+    // Pass through all IMAP UIDs from contributing parts for ACKing
+    if (entry.ackUids.length > 0) {
+      msg.ackUids = entry.ackUids;
+    }
 
     return output.sendDone({ out: msg });
   }

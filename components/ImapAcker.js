@@ -147,8 +147,9 @@ class ImapAcker extends Component {
       return;
     }
 
-    // No imapUid means this message didn't come from IMAP (e.g. test-injected)
-    if (!msg.imapUid) {
+    // No imapUid or ackUids means this message didn't come from IMAP
+    // (e.g. test-injected)
+    if (!msg.imapUid && !msg.ackUids) {
       return output.sendDone(msg);
     }
 
@@ -162,13 +163,24 @@ class ImapAcker extends Component {
   async markSeen(msg, output) {
     try {
       const client = await this.ensureConnected();
-      await client.messageFlagsSet(msg.imapUid, ["\\Seen"], {
-        uid: true,
-      });
-      console.log(`[ImapAcker] Marked as seen: uid=${msg.imapUid}`);
+
+      // Support both single imapUid (legacy/simple cases) and ackUids array
+      // (multi-part reassembled messages where all chunks contributed)
+      const uids =
+        msg.ackUids && Array.isArray(msg.ackUids) ? msg.ackUids : [msg.imapUid];
+
+      for (const uid of uids) {
+        if (!uid) continue;
+        await client.messageFlagsSet(uid, ["\\Seen"], {
+          uid: true,
+        });
+        console.log(`[ImapAcker] Marked as seen: uid=${uid}`);
+      }
     } catch (err) {
       console.error(
-        `[ImapAcker] Failed to mark as seen: uid=${msg.imapUid}: ${err.message}`,
+        `[ImapAcker] Failed to mark as seen: ${
+          msg.ackUids ? JSON.stringify(msg.ackUids) : msg.imapUid
+        }: ${err.message}`,
       );
       // Still pass through — the message was processed; the ack failure
       // just means it'll be reprocessed on the next poll (idempotent ops

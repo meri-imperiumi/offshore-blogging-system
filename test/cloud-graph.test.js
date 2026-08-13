@@ -122,10 +122,20 @@ describe("cloud-server.fbp", () => {
 
   it("wires GitPublisher into the blog pipeline", () => {
     assert.ok(graph);
+    // BlogDecoder goes to GitPublisher (both success and failed messages)
     const decoderToPublisher = graph.edges.some(
       (e) => e.from.node === "BlogDecoder" && e.to.node === "GitPublisher",
     );
     assert.ok(decoderToPublisher, "BlogDecoder should feed GitPublisher");
+
+    // GitPublisher sends confirmation (or failed message) to ReplyDispatcher
+    const publisherToDispatcher = graph.edges.some(
+      (e) => e.from.node === "GitPublisher" && e.to.node === "ReplyDispatcher",
+    );
+    assert.ok(
+      publisherToDispatcher,
+      "GitPublisher should send confirmation to ReplyDispatcher",
+    );
 
     // DecoderBypass should be wired between BlogAuth and BlogDecoder
     const authToBypass = graph.edges.some(

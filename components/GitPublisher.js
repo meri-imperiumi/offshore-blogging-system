@@ -263,6 +263,11 @@ class GitPublisher extends Component {
       confirmMsg.publishedPath = markdownPath;
       confirmMsg.imageCount = imageBuffers.length;
 
+      // Pass through ackUids so ImapAcker can ACK all contributing emails
+      if (msg.ackUids && Array.isArray(msg.ackUids)) {
+        confirmMsg.ackUids = msg.ackUids;
+      }
+
       output.sendDone(confirmMsg);
     } catch (err) {
       fail(msg, new Error(`Git publish failed: ${err.message}`));

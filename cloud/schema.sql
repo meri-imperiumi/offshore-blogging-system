@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS buffer_chunks (
   reply_to TEXT NOT NULL,
   channel TEXT NOT NULL,         -- 'inreach' | 'winlink'
   payload TEXT NOT NULL,
+  imap_uid TEXT,              -- IMAP UID of the chunk's email
   created_at INTEGER NOT NULL,
 
   PRIMARY KEY (identity_hash, transmission_id, part_type, chunk_index)
