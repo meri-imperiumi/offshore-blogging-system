@@ -246,7 +246,9 @@ function renderAlert(code, err, msg) {
       lines.push(`Blog post: ${msg.filename}`);
     }
     if (msg.transmissionId) {
-      lines.push(`Transmission ID: ${msg.transmissionId}`);
+      // Prefix with GRIB if partType indicates GRIB data
+      const prefix = msg.partType === "grib" ? "GRIB " : "";
+      lines.push(`${prefix}transmission ID: ${msg.transmissionId}`);
     }
     if (msg.payload && !String(msg.payload).startsWith("InReach:")) {
       // For status replies, show the full payload

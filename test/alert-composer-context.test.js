@@ -50,6 +50,7 @@ describe("AlertComposer context extraction", () => {
       channel: "inreach",
       intent: "NOTIFY",
       transmissionId: "Rq7T",
+      partType: "grib",
     };
 
     fail(

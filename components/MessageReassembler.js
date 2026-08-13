@@ -305,6 +305,8 @@ class MessageReassembler extends Component {
         replyTo: entry.reply_to,
         channel: entry.channel,
         intent: "NOTIFY",
+        transmissionId: entry.transmission_id,
+        partType: entry.part_type,
         payload: `NACK: Missing chunks for ${entry.transmission_id}/${entry.part_type}. Received ${entry.received}/${entry.total}.`,
       };
 
