@@ -133,10 +133,9 @@ BlogAuth OUT -> IN DecoderBypass(DecoderBypass)
 DecoderBypass OUT -> IN BlogDecoder(BlogDecoder)
 DecoderBypass BYPASS -> IN GitPublisher(GitPublisher)
 BlogAuth DENIED -> IN AlertComposer(AlertComposer)
-# BlogDecoder OUT (decoded from InReach chunks) goes to GitPublisher
+# BlogDecoder OUT (decoded from InReach chunks) goes to GitPublisher.
+# Failed messages pass through GitPublisher (validate() fails) to ReplyDispatcher.
 BlogDecoder OUT -> IN GitPublisher
-# BlogDecoder ERROR (bad CRC, dict version mismatch, etc.) goes to ReplyDispatcher
-BlogDecoder OUT -> IN ReplyDispatcher
 GitPublisher OUT -> IN ReplyDispatcher
 
 # 5. Application Logic: GRIB Weather Pipeline

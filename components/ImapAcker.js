@@ -171,10 +171,16 @@ class ImapAcker extends Component {
 
       for (const uid of uids) {
         if (!uid) continue;
-        await client.messageFlagsSet(uid, ["\\Seen"], {
+        // Ensure UID is an integer (imapflow expects number, not string)
+        const numericUid = typeof uid === "string" ? parseInt(uid, 10) : uid;
+        if (isNaN(numericUid)) {
+          console.error(`[ImapAcker] Invalid UID: ${uid}`);
+          continue;
+        }
+        await client.messageFlagsSet(numericUid, ["\\Seen"], {
           uid: true,
         });
-        console.log(`[ImapAcker] Marked as seen: uid=${uid}`);
+        console.log(`[ImapAcker] Marked as seen: uid=${numericUid}`);
       }
     } catch (err) {
       console.error(
