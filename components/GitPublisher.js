@@ -258,6 +258,10 @@ class GitPublisher extends Component {
       confirmMsg.filename = blogData.filename;
       confirmMsg.publishedPath = markdownPath;
       confirmMsg.imageCount = imageBuffers.length;
+      // Report whether this was a real new commit so a downstream
+      // MetricCounter(metric=blog_posts) counts actual publishes and skips
+      // the idempotent no-op when the same post is re-delivered unchanged.
+      confirmMsg.published = committed;
 
       // Pass through ackUids so ImapAcker can ACK all contributing emails
       if (msg.ackUids && Array.isArray(msg.ackUids)) {

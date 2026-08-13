@@ -157,4 +157,151 @@ describe("ImapAcker component", () => {
     assert.ok(doneCalled, "should call done()");
     assert.strictEqual(component.client, null, "should not have connected");
   });
+
+  // --- ackedUids reporting (consumed by the downstream MetricCounter / msg_in) ---
+
+  it("records ackedUids for a single imapUid on successful mark-seen", async () => {
+    const component = ImapAckerModule.getComponent();
+    component.imapConfig = {
+      host: "localhost",
+      port: 999,
+      user: "test",
+      pass: "test",
+      mailbox: "INBOX",
+    };
+    // Pre-set the client so ensureConnected() returns it without connecting.
+    const marked = [];
+    component.client = {
+      messageFlagsSet: async (uid) => {
+        marked.push(uid);
+      },
+    };
+
+    const msg = { errors: [], imapUid: 42, payload: "x" };
+    const result = await new Promise((resolve) => {
+      component.handle(
+        {
+          hasData: (port) => port === "in",
+          getData: (port) => (port === "in" ? msg : undefined),
+        },
+        {
+          sendDone: (m) => resolve(m),
+          done: () => resolve(null),
+          send: () => {},
+        },
+      );
+    });
+
+    assert.deepStrictEqual(marked, [42], "should mark the uid seen");
+    assert.deepStrictEqual(result.ackedUids, [42], "should report ackedUids");
+  });
+
+  it("records all ackUids for a multi-chunk message", async () => {
+    const component = ImapAckerModule.getComponent();
+    component.imapConfig = {
+      host: "localhost",
+      port: 999,
+      user: "test",
+      pass: "test",
+      mailbox: "INBOX",
+    };
+    const marked = [];
+    component.client = {
+      messageFlagsSet: async (uid) => {
+        marked.push(uid);
+      },
+    };
+
+    const msg = { errors: [], ackUids: [10, 20, 30], payload: "x" };
+    const result = await new Promise((resolve) => {
+      component.handle(
+        {
+          hasData: (port) => port === "in",
+          getData: (port) => (port === "in" ? msg : undefined),
+        },
+        {
+          sendDone: (m) => resolve(m),
+          done: () => resolve(null),
+          send: () => {},
+        },
+      );
+    });
+
+    assert.deepStrictEqual(marked, [10, 20, 30]);
+    assert.deepStrictEqual(result.ackedUids, [10, 20, 30]);
+  });
+
+  it("continues past a failing uid and reports only the ones it acked", async () => {
+    const component = ImapAckerModule.getComponent();
+    component.imapConfig = {
+      host: "localhost",
+      port: 999,
+      user: "test",
+      pass: "test",
+      mailbox: "INBOX",
+    };
+    const marked = [];
+    component.client = {
+      messageFlagsSet: async (uid) => {
+        if (uid === 20) throw new Error("boom");
+        marked.push(uid);
+      },
+    };
+
+    const msg = { errors: [], ackUids: [10, 20, 30], payload: "x" };
+    const result = await new Promise((resolve) => {
+      component.handle(
+        {
+          hasData: (port) => port === "in",
+          getData: (port) => (port === "in" ? msg : undefined),
+        },
+        {
+          sendDone: (m) => resolve(m),
+          done: () => resolve(null),
+          send: () => {},
+        },
+      );
+    });
+
+    // uid 20 failed; 10 and 30 still attempted (one bad uid no longer aborts
+    // the rest of a multi-chunk sequence).
+    assert.deepStrictEqual(marked, [10, 30]);
+    assert.deepStrictEqual(result.ackedUids, [10, 30]);
+  });
+
+  it("sets no ackedUids when every uid fails", async () => {
+    const component = ImapAckerModule.getComponent();
+    component.imapConfig = {
+      host: "localhost",
+      port: 999,
+      user: "test",
+      pass: "test",
+      mailbox: "INBOX",
+    };
+    component.client = {
+      messageFlagsSet: async () => {
+        throw new Error("connection gone");
+      },
+    };
+
+    const msg = { errors: [], imapUid: 42, payload: "x" };
+    const result = await new Promise((resolve) => {
+      component.handle(
+        {
+          hasData: (port) => port === "in",
+          getData: (port) => (port === "in" ? msg : undefined),
+        },
+        {
+          sendDone: (m) => resolve(m),
+          done: () => resolve(null),
+          send: () => {},
+        },
+      );
+    });
+
+    assert.ok(
+      !Array.isArray(result.ackedUids) || result.ackedUids.length === 0,
+      "no ackedUids when nothing was marked",
+    );
+  });
 });

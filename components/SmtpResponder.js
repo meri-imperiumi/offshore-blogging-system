@@ -1,6 +1,12 @@
 const { Component, failed, fail } = require("noflo-assembly");
 const SmtpClient = require("../lib/SmtpClient");
 
+// Injectable client factory so tests can substitute a mock client without a
+// real SMTP server. Production uses the real SmtpClient.
+const di = {
+  createClient: (host, port, auth) => new SmtpClient(host, port, auth),
+};
+
 /**
  * SmtpResponder - Sends plaintext responses via SMTP
  *
@@ -143,7 +149,7 @@ class SmtpResponder extends Component {
     // instead of async/await so that handle() returns undefined (not a
     // Promise). If it returned a Promise, NoFlo would call
     // output.sendDone(resolvedValue) on resolve, causing a duplicate send.
-    const client = new SmtpClient(this.smtpHost, this.smtpPort, {
+    const client = di.createClient(this.smtpHost, this.smtpPort, {
       user: this.smtpUser,
       password: this.smtpPass,
     });
@@ -151,7 +157,9 @@ class SmtpResponder extends Component {
     client
       .sendWithRetry(recipient, subject, body)
       .then(() => {
-        // Pass through the message on success
+        // Pass through the message on success. Report one outbound message
+        // sent so a downstream MetricCounter(metric=msg_out) can count it.
+        msg.sentCount = 1;
         output.sendDone(msg);
       })
       .catch((err) => {
@@ -164,3 +172,4 @@ class SmtpResponder extends Component {
 }
 
 exports.getComponent = () => new SmtpResponder();
+exports.di = di;

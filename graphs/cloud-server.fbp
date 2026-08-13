@@ -91,6 +91,14 @@ PollTimer OUT -> IN Listener(ImapFetcher)
 # mark messages seen after the reply is sent).
 'imap.mailbox.org' -> HOST ImapAcker(ImapAcker)
 '993' -> PORT ImapAcker
+
+# 1c. Inbound message counter: counts each acked IMAP uid into the metrics
+# table (msg_in). Sits after ImapAcker so only fully-processed, successfully
+# acked messages are counted — a (partial) ack failure reports fewer/no
+# ackedUids and the retried message is counted once when it finally succeeds.
+ImapAcker OUT -> IN MsgInCounter(MetricCounter)
+'msg_in' -> METRIC MsgInCounter
+DbEnv OUT -> DBPATH MsgInCounter
 Listener OUT -> IN Verifier(AuthVerifier)
 
 # 1b. Parse Winlink blog posts before InReachReceiver
@@ -119,6 +127,9 @@ Router ERROR -> IN ReplyDispatcher(ReplyDispatcher)
 # ReplyDispatcher routes failed messages to SMTP (ErrorLogger checks failed(msg))
 ReplyDispatcher SMTP -> IN ErrorLogger(ErrorLogger)
 Router MISSED -> IN ErrorLogger(ErrorLogger)
+# MISSED = unrecognized intent. Also ack it so the email doesn't loop
+# unseen (re-fetched every poll forever); ErrorLogger still records it.
+Router MISSED -> IN ImapAcker(ImapAcker)
 # ReplyDispatcher also routes its failed messages to ErrorLogger
 ReplyDispatcher SMTP -> IN ErrorLogger(ErrorLogger)
 
@@ -136,7 +147,13 @@ BlogAuth DENIED -> IN AlertComposer(AlertComposer)
 # BlogDecoder OUT (decoded from InReach chunks) goes to GitPublisher.
 # Failed messages pass through GitPublisher (validate() fails) to ReplyDispatcher.
 BlogDecoder OUT -> IN GitPublisher
-GitPublisher OUT -> IN ReplyDispatcher
+# Count a published blog post (blog_posts) only on a real commit —
+# GitPublisher sets published=true on a new commit and leaves it false on
+# the idempotent re-publish no-op, so a duplicate delivery doesn't inflate.
+GitPublisher OUT -> IN BlogPostCounter(MetricCounter)
+'blog_posts' -> METRIC BlogPostCounter
+DbEnv OUT -> DBPATH BlogPostCounter
+BlogPostCounter OUT -> IN ReplyDispatcher
 
 # 5. Application Logic: GRIB Weather Pipeline
 'grib:request' -> PERMISSION GribAuth(DacarAuthorizer)
@@ -152,7 +169,13 @@ GribFetcher OUTBOX -> IN SmtpResponder(SmtpResponder)
 # email stays unseen and is re-fetched on the next poll, retrying the
 # request. For a driving-blind user it is safer to send twice than to ack
 # early and silently lose the request when SMTP fails.
-SmtpResponder OUT -> IN ImapAcker(ImapAcker)
+SmtpResponder OUT -> IN MsgOutSmtpCounter(MetricCounter)
+'msg_out' -> METRIC MsgOutSmtpCounter
+DbEnv OUT -> DBPATH MsgOutSmtpCounter
+# Count each outbound SMTP message (msg_out) before acking. The counter is a
+# passthrough, so the ack still happens; SmtpResponder sets sentCount=1 on
+# success and a failed send forwards a failed(msg) the counter skips.
+MsgOutSmtpCounter OUT -> IN ImapAcker(ImapAcker)
 
 # 6. Third-Party Bridge (Saildocs Ingestion)
 Router OUT[2] -> IN SaildocsMatcher(SaildocsMatcher)
@@ -164,6 +187,11 @@ SaildocsMatcher DIRECT -> IN GribChunker(GribChunker)
 # bypassing GribChunker. The user is driving blind — an error message is
 # better than a silent drop, and it prevents the email from looping unseen.
 SaildocsMatcher OUT -> IN ReplyDispatcher(ReplyDispatcher)
+# Unmatched/unprocessable Saildocs responses (no matching pending request,
+# or a processing error) go to `missed`. Ack-and-drop them so they don't loop
+# unseen (re-fetched every poll forever). They carry no resolvable reply
+# channel (SYS_SAILDOCS has channel=null), so just mark seen.
+SaildocsMatcher MISSED -> IN ImapAcker(ImapAcker)
 ReplyDispatcher SMTP -> IN ImapAcker(ImapAcker)
 ReplyDispatcher INREACH -> IN ImapAcker(ImapAcker)
 
@@ -179,6 +207,9 @@ CmdRouter OUT[1] -> IN StatusBuilder(StatusBuilder)
 CmdRouter OUT[2] -> IN PingHandler(PingHandler)
 PingHandler OUT -> IN ReplyDispatcher
 CmdRouter MISSED -> IN ErrorLogger
+# Unrecognized SYS command: ack it too (see Router MISSED above) so it
+# doesn't loop unseen. ErrorLogger still records it.
+CmdRouter MISSED -> IN ImapAcker(ImapAcker)
 
 GribChunker OUT -> IN Gate
 # If the payload is small (<= N chunks) or user sends "YES", Gate releases it here:
@@ -205,8 +236,14 @@ ReplyDispatcher INREACH -> IN InReachSender(InReachSender)
 # paged. alertaddress is deployment config (set at runtime, like smtp creds).
 # InReachSender now follows noflo-assembly pattern: failed messages go
 # through the out port, not a dedicated error port.
-InReachSender OUT -> IN ErrorLogger(ErrorLogger)
-InReachSender OUT -> IN AlertComposer(AlertComposer)
+InReachSender OUT -> IN MsgOutInReachCounter(MetricCounter)
+'msg_out' -> METRIC MsgOutInReachCounter
+DbEnv OUT -> DBPATH MsgOutInReachCounter
+# Count outbound InReach messages (one per chunk) before logging/alerting.
+# InReachSender sets sentCount=<chunk count> on success; failed sends are
+# skipped by the counter but still reach ErrorLogger/AlertComposer below.
+MsgOutInReachCounter OUT -> IN ErrorLogger(ErrorLogger)
+MsgOutInReachCounter OUT -> IN AlertComposer(AlertComposer)
 AlertComposer OUT -> IN SmtpResponder
 
 # 10. (removed) Periodic Hi-Fi Sync — no longer needed in the cloud. Hi-fi

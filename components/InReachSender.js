@@ -240,6 +240,9 @@ class InReachSender extends Component {
     confirm.intent = "NOTIFY";
     confirm.payload = `Sent ${chunkCount} message(s) via InReach`;
     confirm.notifyText = `InReach: ${chunkCount} messages sent`;
+    // Report the number of outbound messages sent so a downstream
+    // MetricCounter(metric=msg_out) can count them (one per chunk).
+    confirm.sentCount = chunkCount;
     console.log(`[InReachSender] Successfully sent ${chunkCount} message(s)`);
     output.sendDone(confirm);
   }

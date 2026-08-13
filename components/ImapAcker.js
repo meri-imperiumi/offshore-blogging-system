@@ -161,6 +161,11 @@ class ImapAcker extends Component {
   }
 
   async markSeen(msg, output) {
+    // Record the uids we actually marked \Seen so a downstream
+    // MetricCounter can count inbound messages (msg_in) without
+    // overcounting: an ack that marked nothing adds 0, and the retried
+    // message is counted once when it finally succeeds.
+    const ackedUids = [];
     try {
       const client = await this.ensureConnected();
 
@@ -177,22 +182,31 @@ class ImapAcker extends Component {
           console.error(`[ImapAcker] Invalid UID: ${uid}`);
           continue;
         }
-        await client.messageFlagsSet(numericUid, ["\\Seen"], {
-          uid: true,
-        });
-        console.log(`[ImapAcker] Marked as seen: uid=${numericUid}`);
+        // Per-uid try/catch: one bad uid no longer aborts the rest of a
+        // multi-chunk sequence. Each successfully marked uid is reported.
+        try {
+          await client.messageFlagsSet(numericUid, ["\\Seen"], {
+            uid: true,
+          });
+          ackedUids.push(numericUid);
+          console.log(`[ImapAcker] Marked as seen: uid=${numericUid}`);
+        } catch (err) {
+          console.error(
+            `[ImapAcker] Failed to mark uid=${numericUid} as seen: ${err.message}`,
+          );
+        }
       }
     } catch (err) {
-      console.error(
-        `[ImapAcker] Failed to mark as seen: ${
-          msg.ackUids ? JSON.stringify(msg.ackUids) : msg.imapUid
-        }: ${err.message}`,
-      );
+      // Connection-level failure (ensureConnected threw) — nothing acked.
+      console.error(`[ImapAcker] IMAP connection failed: ${err.message}`);
       // Still pass through — the message was processed; the ack failure
       // just means it'll be reprocessed on the next poll (idempotent ops
       // like PONG are safe to resend).
     }
 
+    if (ackedUids.length > 0) {
+      msg.ackedUids = ackedUids;
+    }
     output.sendDone(msg);
   }
 

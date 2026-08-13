@@ -237,6 +237,7 @@ describe("InReachSender component", () => {
     assert.strictEqual(sends.length, 1);
     assert.strictEqual(sends[0].url, REPLY_URL);
     assert.strictEqual(sends[0].message, "hello inreach");
+    assert.strictEqual(received.sentCount, 1, "confirm reports chunk count");
   });
 
   it("accepts a bare string payload (wraps to one chunk)", async () => {
@@ -292,6 +293,7 @@ describe("InReachSender component", () => {
 
     assert.ok(received);
     assert.strictEqual(sends.length, 3);
+    assert.strictEqual(received.sentCount, 3, "confirm reports chunk count");
     // Multi-chunk payloads are wrapped in the compact header format:
     // [ID:4][Type:1][Index:2][Total:2]:[Payload]
     assert.strictEqual(sends[0].message, "TID1T0103:c1");

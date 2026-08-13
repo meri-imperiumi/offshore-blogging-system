@@ -128,13 +128,19 @@ describe("cloud-server.fbp", () => {
     );
     assert.ok(decoderToPublisher, "BlogDecoder should feed GitPublisher");
 
-    // GitPublisher sends confirmation (or failed message) to ReplyDispatcher
-    const publisherToDispatcher = graph.edges.some(
-      (e) => e.from.node === "GitPublisher" && e.to.node === "ReplyDispatcher",
+    // GitPublisher sends confirmation (or failed message) to ReplyDispatcher,
+    // via the BlogPostCounter (a passthrough that counts real publishes).
+    const publisherToCounter = graph.edges.some(
+      (e) => e.from.node === "GitPublisher" && e.to.node === "BlogPostCounter",
+    );
+    assert.ok(publisherToCounter, "GitPublisher should feed BlogPostCounter");
+
+    const counterToDispatcher = graph.edges.some(
+      (e) => e.from.node === "BlogPostCounter" && e.to.node === "ReplyDispatcher",
     );
     assert.ok(
-      publisherToDispatcher,
-      "GitPublisher should send confirmation to ReplyDispatcher",
+      counterToDispatcher,
+      "BlogPostCounter should feed ReplyDispatcher (confirmation still reaches it)",
     );
 
     // DecoderBypass should be wired between BlogAuth and BlogDecoder
@@ -159,17 +165,26 @@ describe("cloud-server.fbp", () => {
 
   it("acks InReach request emails only after the SMTP send to Saildocs succeeds", () => {
     // The GRIB request email must be marked \Seen only after SmtpResponder
-    // successfully sends the request to Saildocs (SmtpResponder OUT →
-    // ImapAcker). If SMTP fails, the email stays unseen and is retried on
-    // the next poll — for a driving-blind user it is safer to send the
+    // successfully sends the request to Saildocs. SmtpResponder feeds
+    // ImapAcker via the MsgOutSmtpCounter (a passthrough that counts
+    // outbound SMTP messages), so the ack still happens only after a
+    // successful send. If SMTP fails, the email stays unseen and is retried
+    // on the next poll — for a driving-blind user it is safer to send the
     // request twice than to ack early and silently lose it.
     assert.ok(graph);
-    const smtpToAcker = graph.edges.some(
-      (e) => e.from.node === "SmtpResponder" && e.to.node === "ImapAcker",
+    const smtpToCounter = graph.edges.some(
+      (e) => e.from.node === "SmtpResponder" && e.to.node === "MsgOutSmtpCounter",
     );
     assert.ok(
-      smtpToAcker,
-      "SmtpResponder OUT should feed ImapAcker (ack after successful SMTP send)",
+      smtpToCounter,
+      "SmtpResponder OUT should feed MsgOutSmtpCounter",
+    );
+    const counterToAcker = graph.edges.some(
+      (e) => e.from.node === "MsgOutSmtpCounter" && e.to.node === "ImapAcker",
+    );
+    assert.ok(
+      counterToAcker,
+      "MsgOutSmtpCounter OUT should feed ImapAcker (ack after successful SMTP send)",
     );
     const fetcherToAcker = graph.edges.some(
       (e) => e.from.node === "GribFetcher" && e.to.node === "ImapAcker",
