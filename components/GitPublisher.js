@@ -170,7 +170,7 @@ class GitPublisher extends Component {
       // local-only (push=false) mode — there's no remote to pull from there.
       if (isRepo && this.push) {
         try {
-          await git.pull(this.githubRemote, this.branch);
+          await git.pull(this.githubRemote, this.branch, "theirs");
         } catch {
           // Remote not present yet (first publish) or offline — proceed.
         }
