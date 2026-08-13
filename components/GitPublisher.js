@@ -68,7 +68,7 @@ class GitPublisher extends Component {
         watermark_text: {
           datatype: "string",
           description:
-            'Banner text overlaid on lo-fi images (default: "lo-fi via satellite")',
+            'Banner text overlaid on lo-fi images (default: "lo-fi preview")',
           control: true,
           required: false,
         },
@@ -85,7 +85,7 @@ class GitPublisher extends Component {
     this.githubRemote = "origin";
     this.branch = "main";
     this.push = true;
-    this.watermarkText = "lo-fi via satellite";
+    this.watermarkText = "lo-fi preview";
   }
 
   handle(input, output) {
