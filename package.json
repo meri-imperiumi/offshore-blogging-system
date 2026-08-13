@@ -1,6 +1,6 @@
 {
   "name": "@meri-imperiumi/signalk-offshore-blogging",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Encode blog posts and weather requests for transmission via InReach or Winlink",
   "main": "plugin/index.js",
   "scripts": {
