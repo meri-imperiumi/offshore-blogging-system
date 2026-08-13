@@ -246,7 +246,7 @@ function renderAlert(code, err, msg) {
       lines.push(`Blog post: ${msg.filename}`);
     }
     if (msg.transmissionId) {
-      lines.push(`GRIB transmission ID: ${msg.transmissionId}`);
+      lines.push(`Transmission ID: ${msg.transmissionId}`);
     }
     if (msg.payload && !String(msg.payload).startsWith("InReach:")) {
       // For status replies, show the full payload
