@@ -180,9 +180,9 @@ class MessageReassembler extends Component {
     const metadata = match[5]; // May be undefined (downlink has no meta)
     const dataPayload = match[6];
 
-    // Map typeChar to full partType string for DB compatibility
-    const typeMap = { T: "text", I: "image", G: "grib", S: "sys" };
-    const partType = typeMap[typeChar] || typeChar.toLowerCase();
+    // Preserve the type character (I, J, K, T, G, S) for downstream routing
+    // BlogDecoder expects single letters for different images (I, J, K...)
+    const partType = typeChar;
 
     return {
       chunk: chunkIndex,

@@ -154,7 +154,7 @@ describe("MessageReassembler", () => {
 
     assert.ok(result, "should emit reassembled message on out");
     assert.strictEqual(result.payload, "AAAABBBBCCCC");
-    assert.strictEqual(result.partType, "grib");
+    assert.strictEqual(result.partType, "G");
     assert.strictEqual(result.transmissionId, "abcd");
     assert.strictEqual(result.totalChunks, 3);
   });

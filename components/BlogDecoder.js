@@ -94,7 +94,9 @@ class BlogDecoder extends Component {
       this.pending.set(transmissionId, entry);
     }
 
-    if (partType === "T") {
+    // Handle both single letters (T, I) and full words (text, image)
+    // for consistency
+    if (partType === "T" || partType === "text") {
       // Text part: base64-decode + zlib-inflate.
       let decoded;
       try {
@@ -108,11 +110,13 @@ class BlogDecoder extends Component {
       entry.textChunks = msg.totalChunks || 0;
     } else if (/^[A-Z]$/.test(partType)) {
       // Image part: base64-decode to the raw (WebP) buffer.
+      // Single letter types: I, J, K for different images
       entry.images.set(partType, Buffer.from(msg.payload, "base64"));
       entry.imageChunks += msg.totalChunks || 0;
     } else {
-      // Unknown part type reaching the blog pipeline — pass through so it
-      // surfaces downstream rather than vanishing.
+      // Unknown part type reaching the blog pipeline — fail it so
+      // ReplyDispatcher can send an error back to the sender.
+      fail(msg, new Error(`Unknown blog part type: ${partType}`));
       return output.sendDone({ out: msg });
     }
 
@@ -186,9 +190,13 @@ class BlogDecoder extends Component {
 
   /**
    * The expected image part-type letters for a given image count.
-   * The encoder assigns I, J, K, ... (ASCII 73 + index) in order.
+   * Returns ["I"] for single-image posts (the encoder uses I for the first image),
+   * or I, J, K... for multiple images.
    */
   expectedImageTypes(count) {
+    if (count === 1) {
+      return ["I"];
+    }
     const types = [];
     for (let i = 0; i < count; i++) {
       types.push(String.fromCharCode(73 + i)); // I=73, J=74, ...
