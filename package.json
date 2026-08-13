@@ -1,6 +1,6 @@
 {
   "name": "@meri-imperiumi/signalk-offshore-blogging",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Offshore blogging system for Signal K - encode blog posts and weather requests for low-bandwidth satellite transmission",
   "main": "plugin/index.js",
   "scripts": {
