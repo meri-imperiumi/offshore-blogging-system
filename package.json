@@ -26,7 +26,11 @@
   "signalk": {
     "appIcon": "./doc/icon.png",
     "displayName": "Offshore Blogging",
-    "description": "Encode blog posts and weather requests for transmission via InReach or Winlink"
+    "description": "Encode blog posts and weather requests for transmission via InReach or Winlink",
+    "screenshots": [
+      "./doc/weather-request.jpg",
+      "./doc/download-grib.jpg"
+    ]
   },
   "dependencies": {
     "@reticulum/core": "^0.6.5",
