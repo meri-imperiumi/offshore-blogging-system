@@ -114,12 +114,11 @@ class WinlinkBlogReceiver extends Component {
    * Format:
    *   Filename: <filename>
    *   Date: <date>
+   *   Title: <title>
    *   Images: <count>
    *   Image_0: <path>|<base64>
    *   Image_1: <path>|<base64>
    *   ...
-   *   (blank line)
-   *   Title
    *   (blank line)
    *   Body
    *
@@ -136,6 +135,7 @@ class WinlinkBlogReceiver extends Component {
 
     let filename = null;
     let date = null;
+    let title = null;
     let imageCount = 0;
     const images = [];
 
@@ -169,6 +169,13 @@ class WinlinkBlogReceiver extends Component {
         continue;
       }
 
+      // Title: <value>
+      const titleMatch = line.match(/^Title:\s*(.+)$/);
+      if (titleMatch) {
+        title = titleMatch[1].trim();
+        continue;
+      }
+
       // Images: <count>
       const imagesMatch = line.match(/^Images:\s*(\d+)$/);
       if (imagesMatch) {
@@ -195,27 +202,11 @@ class WinlinkBlogReceiver extends Component {
     }
 
     // Validate required fields
-    if (!filename || !date) {
+    if (!filename || !date || !title) {
       return null;
     }
 
-    // Extract title (first non-empty line after header)
-    let title = "";
-    for (; headerLineIdx < lines.length; headerLineIdx++) {
-      const line = lines[headerLineIdx];
-      if (line.trim() !== "") {
-        title = line;
-        headerLineIdx++; // Move past title line
-        break;
-      }
-    }
-
-    // Skip blank line after title
-    if (headerLineIdx < lines.length && lines[headerLineIdx].trim() === "") {
-      headerLineIdx++;
-    }
-
-    // Extract body (remaining lines)
+    // Body is everything remaining after the blank line
     const body = lines.slice(headerLineIdx).join("\n");
 
     // Validate images count matches parsed images

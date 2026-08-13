@@ -508,6 +508,7 @@ async function signForWinlink(
   // Build content header with structured fields
   let contentHeader = `Filename: ${filename}\n`;
   contentHeader += `Date: ${normalizedDate}\n`;
+  contentHeader += `Title: ${title}\n`;
   contentHeader += `Images: ${imageInfos.length}\n`;
 
   // Add images with their markdown paths (same order as body references)
@@ -518,9 +519,8 @@ async function signForWinlink(
     contentHeader += `Image_${i}: ${path}|${base64Data}\n`;
   }
 
-  // Blank line separates header from post content
-  // Format: title on one line, blank line, then body
-  const content = `${contentHeader}\n${title}\n\n${body}`;
+  // Blank line separates header from post content (body only)
+  const content = `${contentHeader}\n${body}`;
 
   // Sign the content using Ed25519
   const contentBytes = Buffer.from(content, "utf-8");

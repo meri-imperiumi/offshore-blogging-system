@@ -56,9 +56,8 @@ test("WinlinkBlogReceiver parses Winlink blog post without images", () => {
 
   const content = `Filename: 2024-08-12.md
 Date: 2024-08-12
+Title: Test Post Title
 Images: 0
-
-Test Post Title
 
 This is the blog post body.`;
 
@@ -101,11 +100,10 @@ test("WinlinkBlogReceiver parses Winlink blog post with images", () => {
 
   const content = `Filename: 2024-08-12.md
 Date: 2024-08-12
+Title: Test Post Title
 Images: 2
 Image_0: ../2024/img1.webp|${fakeImage.toString("base64")}
 Image_1: ../2024/img2.webp|${fakeImage.toString("base64")}
-
-Test Post Title
 
 This is the blog post body with images.`;
 
@@ -143,8 +141,6 @@ test("WinlinkBlogReceiver handles missing required fields", () => {
   const content = `Filename: 2024-08-12.md
 Images: 0
 
-Test Post Title
-
 This is the blog post body.`;
 
   const input = {
@@ -174,9 +170,8 @@ test("WinlinkBlogReceiver handles body with multiple lines", () => {
   const component = getComponent();
   const content = `Filename: 2024-08-12.md
 Date: 2024-08-12
+Title: Test Post Title
 Images: 0
-
-Test Post Title
 
 First paragraph.
 
@@ -212,9 +207,8 @@ test("WinlinkBlogReceiver normalizes date from ISO timestamp", () => {
   const component = getComponent();
   const content = `Filename: 2024-08-12.md
 Date: 2024-08-12T16:35:17-10:00
+Title: Test Post
 Images: 0
-
-Test Post
 
 Body here.`;
 
@@ -237,4 +231,66 @@ Body here.`;
   component.handle(input, output);
   assert.ok(outputSent);
   assert.strictEqual(outputSent.payload.date, "2024-08-12");
+});
+
+test("WinlinkBlogReceiver handles title with special characters", () => {
+  const component = getComponent();
+  const content = `Filename: 2024-08-12.md
+Date: 2024-08-12
+Title: Pacific Ocean, 148NM SW of Anse Amyot
+Images: 0
+
+Body here.`;
+
+  const input = {
+    hasData: (port) => port === "in",
+    getData: () => ({
+      channel: "winlink",
+      payload: `---BEGIN BLOG POST---\n${content}\n---END BLOG POST---`,
+      identityHash: "test123",
+    }),
+  };
+
+  let outputSent = null;
+  const output = {
+    sendDone: (data) => {
+      outputSent = data;
+    },
+  };
+
+  component.handle(input, output);
+  assert.ok(outputSent);
+  assert.strictEqual(
+    outputSent.payload.title,
+    "Pacific Ocean, 148NM SW of Anse Amyot",
+  );
+});
+
+test("WinlinkBlogReceiver handles empty body", () => {
+  const component = getComponent();
+  const content = `Filename: 2024-08-12.md
+Date: 2024-08-12
+Title: Test Post
+Images: 0
+`;
+
+  const input = {
+    hasData: (port) => port === "in",
+    getData: () => ({
+      channel: "winlink",
+      payload: `---BEGIN BLOG POST---\n${content}\n---END BLOG POST---`,
+      identityHash: "test123",
+    }),
+  };
+
+  let outputSent = null;
+  const output = {
+    sendDone: (data) => {
+      outputSent = data;
+    },
+  };
+
+  component.handle(input, output);
+  assert.ok(outputSent);
+  assert.strictEqual(outputSent.payload.bodyMarkdown, "");
 });
