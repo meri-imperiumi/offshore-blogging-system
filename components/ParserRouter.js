@@ -70,14 +70,14 @@ class ParserRouter extends Component {
     // Check for failed messages
     if (failed(msg)) {
       output.send({ error: msg });
-      return output.sendDone();
+      return output.done();
     }
 
     // Check if intent is set
     if (!msg.intent) {
       // No intent - route to MISSED
       output.send({ missed: msg });
-      return output.sendDone();
+      return output.done();
     }
 
     // Find the matching route index
@@ -86,12 +86,12 @@ class ParserRouter extends Component {
     if (routeIndex === -1) {
       // Unknown intent - route to MISSED
       output.send({ missed: msg });
-      return output.sendDone();
+      return output.done();
     }
 
     // Route to the correct output port
     output.send({ out: new IP("data", msg, { index: routeIndex }) });
-    return output.sendDone();
+    return output.done();
   }
 }
 
