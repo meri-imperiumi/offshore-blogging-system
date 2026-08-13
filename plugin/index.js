@@ -8,7 +8,7 @@
 const sharp = require("sharp");
 const fs = require("node:fs").promises;
 const path = require("node:path");
-const { toHex } = require("@reticulum/core");
+const { toHex, fromHex, Identity } = require("@reticulum/core");
 
 // Core blog codec logic lives in lib/BlogCodec.js so it can be shared
 // between this plugin (encode) and the NoFlo cloud pipeline (decode).
@@ -330,8 +330,6 @@ async function encodeBlogPost(
 
 // Load Reticulum identity from signalk-reticulum plugin config or file path
 async function loadReticulumIdentity(app, identityPath) {
-  const { Identity } = require("@reticulum/core");
-
   // Try file path first (explicit configuration)
   if (identityPath) {
     try {
@@ -469,7 +467,8 @@ async function loadReticulumIdentity(app, identityPath) {
 }
 
 // Sign message for Winlink transmission using Reticulum Ed25519
-async function signForWinlink(content, identity) {
+// Formats the blog post with filename, date, and images for cloud server processing
+async function signForWinlink(filename, title, date, body, images, identity) {
   if (!identity) {
     throw new Error("No identity provided for signing");
   }
@@ -478,6 +477,32 @@ async function signForWinlink(content, identity) {
 
   // Get identity hash (SHA-256 truncated to 16 bytes, hex-encoded)
   const identityHashHex = toHex(identity.identityHash);
+
+  // Build content block with structured header and post content
+  // Format:
+  //   Filename: <filename>
+  //   Date: <date>
+  //   Images: <count>
+  //   Image_0: <base64>
+  //   Image_1: <base64>
+  //   ...
+  //   (blank line)
+  //   Title
+  //   (blank line)
+  //   Body
+  let contentHeader = `Filename: ${filename}\n`;
+  contentHeader += `Date: ${date}\n`;
+  contentHeader += `Images: ${images.length}\n`;
+
+  // Add base64-encoded images
+  for (let i = 0; i < images.length; i++) {
+    const imgBuffer = images[i];
+    const base64Data = imgBuffer.toString("base64");
+    contentHeader += `Image_${i}: ${base64Data}\n`;
+  }
+
+  // Blank line separates header from post content
+  const content = `${contentHeader}\n${title}\n\n${body}`;
 
   // Sign the content using Ed25519
   const contentBytes = Buffer.from(content, "utf-8");
@@ -675,8 +700,34 @@ module.exports = (app) => {
               : path.join(blogPath, "_logs", `${filename}.md`);
             const markdown = await fs.readFile(markdownPath, "utf-8");
             const { title, date: _date, body } = parseFrontMatter(markdown);
-            const content = `${title}\n\n${body}`;
-            const signed = await signForWinlink(content, plugin.identity);
+
+            // Use the date from front matter, or extract from filename
+            let postDate = _date;
+            if (!postDate) {
+              const dateMatch = filename.match(/(\d{4}-\d{2}-\d{2})/);
+              if (dateMatch) {
+                postDate = dateMatch[1];
+              } else {
+                postDate = getTodayPostid(); // Fallback to today
+              }
+            }
+
+            // Collect image buffers for Winlink (using already-compressed lo-fi images)
+            const winlinkImages = [];
+            if (result.selectedImages > 0 && result.imageInfos) {
+              for (const imgInfo of result.imageInfos) {
+                winlinkImages.push(imgInfo.data);
+              }
+            }
+
+            const signed = await signForWinlink(
+              result.filename,
+              title,
+              postDate,
+              body,
+              winlinkImages,
+              plugin.identity,
+            );
             winlinkData = {
               metadata: signed.metadata,
               content: signed.content,
@@ -844,10 +895,43 @@ module.exports = (app) => {
         const markdown = await fs.readFile(markdownPath, "utf-8");
         const { title, date: _date, body } = parseFrontMatter(markdown);
 
-        // Format as plain text email body
-        const content = `${title}\n\n${body}`;
+        // Use the date from front matter, or extract from filename
+        let postDate = _date;
+        if (!postDate) {
+          const dateMatch = filename.match(/(\d{4}-\d{2}-\d{2})/);
+          if (dateMatch) {
+            postDate = dateMatch[1];
+          } else {
+            postDate = getTodayPostid(); // Fallback to today
+          }
+        }
 
-        const result = await signForWinlink(content, plugin.identity);
+        // Find and compress all images for Winlink
+        const winlinkImages = [];
+        const images = findImagesFromMarkdown(body, postDate, blogPath);
+        for (const image of images) {
+          try {
+            await fs.access(image.resolvedPath);
+            // Use a generous budget for manual Winlink signing
+            const imgResult = await compressImage(image.resolvedPath, 20);
+            winlinkImages.push(imgResult.data);
+          } catch (_error) {
+            // Image access error - skip
+            app.debug(
+              `Could not read image ${image.resolvedPath} for Winlink signing`,
+            );
+          }
+        }
+
+        const baseFilename = path.basename(filename).replace(/\.md$/, "");
+        const result = await signForWinlink(
+          baseFilename,
+          title,
+          postDate,
+          body,
+          winlinkImages,
+          plugin.identity,
+        );
 
         res.json({
           metadata: result.metadata,

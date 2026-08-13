@@ -93,10 +93,13 @@ PollTimer OUT -> IN Listener(ImapFetcher)
 '993' -> PORT ImapAcker
 Listener OUT -> IN Verifier(AuthVerifier)
 
+# 1b. Parse Winlink blog posts before InReachReceiver
+Verifier OUT -> IN WinlinkBlogReceiver(WinlinkBlogReceiver)
+
 # 1b. Parse InReach lo-fi chunk headers before reassembly. (Winlink
 # blog posts and Saildocs replies carry no lo-fi header and pass straight
 # through InReachReceiver unchanged.)
-Verifier OUT -> IN Receiver(InReachReceiver)
+WinlinkBlogReceiver OUT -> IN Receiver(InReachReceiver)
 
 # 2. Upstream Reassembly (Stateful Buffer & NACK engine)
 # core/RunInterval (NOT core/Ticker, which doesn't exist) fires every 15m,
@@ -124,9 +127,14 @@ ReplyDispatcher SMTP -> IN ErrorLogger(ErrorLogger)
 Router OUT[0] -> IN BlogAuth
 BlogAuth DENIED -> IN ReplyDispatcher
 
-BlogAuth OUT -> IN BlogDecoder(BlogDecoder)
+# BlogAuth output goes to DecoderBypass which checks if already decoded
+# (Winlink) or needs decompression (InReach)
+BlogAuth OUT -> IN DecoderBypass(DecoderBypass)
+DecoderBypass OUT -> IN BlogDecoder(BlogDecoder)
+DecoderBypass BYPASS -> IN GitPublisher(GitPublisher)
 BlogAuth DENIED -> IN AlertComposer(AlertComposer)
-BlogDecoder OUT -> IN GitPublisher(GitPublisher)
+# BlogDecoder OUT (decoded from InReach chunks) goes to GitPublisher
+BlogDecoder OUT -> IN GitPublisher
 # BlogDecoder ERROR (bad CRC, dict version mismatch, etc.) goes to ReplyDispatcher
 BlogDecoder OUT -> IN ReplyDispatcher
 GitPublisher OUT -> IN ReplyDispatcher

@@ -77,18 +77,38 @@ describe("cloud-server.fbp", () => {
     );
   });
 
-  it("wires InReachReceiver between AuthVerifier and MessageReassembler", () => {
+  it("wires WinlinkBlogReceiver and InReachReceiver after AuthVerifier", () => {
     assert.ok(graph);
+    const hasWinlinkReceiver = Object.values(graph.nodes).some(
+      (n) => n.component === "WinlinkBlogReceiver",
+    );
+    assert.ok(
+      hasWinlinkReceiver,
+      "graph should contain a WinlinkBlogReceiver node",
+    );
+
     const hasReceiver = Object.values(graph.nodes).some(
       (n) => n.component === "InReachReceiver",
     );
     assert.ok(hasReceiver, "graph should contain an InReachReceiver node");
 
-    // Find an edge Verifier.out -> Receiver.in
-    const verifierToReceiver = graph.edges.some(
-      (e) => e.from.node === "Verifier" && e.to.node === "Receiver",
+    // Find an edge Verifier.out -> WinlinkBlogReceiver.in
+    const verifierToWinlink = graph.edges.some(
+      (e) => e.from.node === "Verifier" && e.to.node === "WinlinkBlogReceiver",
     );
-    assert.ok(verifierToReceiver, "AuthVerifier should feed InReachReceiver");
+    assert.ok(
+      verifierToWinlink,
+      "AuthVerifier should feed WinlinkBlogReceiver",
+    );
+
+    // And WinlinkBlogReceiver.out -> Receiver.in
+    const winlinkToReceiver = graph.edges.some(
+      (e) => e.from.node === "WinlinkBlogReceiver" && e.to.node === "Receiver",
+    );
+    assert.ok(
+      winlinkToReceiver,
+      "WinlinkBlogReceiver should feed InReachReceiver",
+    );
 
     // And Receiver.out -> Reassembler.in
     const receiverToReassembler = graph.edges.some(
@@ -106,6 +126,25 @@ describe("cloud-server.fbp", () => {
       (e) => e.from.node === "BlogDecoder" && e.to.node === "GitPublisher",
     );
     assert.ok(decoderToPublisher, "BlogDecoder should feed GitPublisher");
+
+    // DecoderBypass should be wired between BlogAuth and BlogDecoder
+    const authToBypass = graph.edges.some(
+      (e) => e.from.node === "BlogAuth" && e.to.node === "DecoderBypass",
+    );
+    assert.ok(authToBypass, "BlogAuth should feed DecoderBypass");
+
+    const bypassToDecoder = graph.edges.some(
+      (e) => e.from.node === "DecoderBypass" && e.to.node === "BlogDecoder",
+    );
+    assert.ok(bypassToDecoder, "DecoderBypass OUT should feed BlogDecoder");
+
+    const bypassToPublisher = graph.edges.some(
+      (e) => e.from.node === "DecoderBypass" && e.to.node === "GitPublisher",
+    );
+    assert.ok(
+      bypassToPublisher,
+      "DecoderBypass BYPASS should feed GitPublisher",
+    );
   });
 
   it("acks InReach request emails only after the SMTP send to Saildocs succeeds", () => {
