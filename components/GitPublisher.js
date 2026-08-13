@@ -248,15 +248,8 @@ class GitPublisher extends Component {
         }
       }
 
-      const confirmMsg = fork(msg, [
-        "payload",
-        "intent",
-        "notifyText",
-        "partType",
-        "replyTo",
-        "channel",
-        "identityHash",
-      ]);
+      // Fork the message to get a fresh copy, preserving all routing fields
+      const confirmMsg = fork(msg);
       confirmMsg.intent = "NOTIFY";
       confirmMsg.payload = `Blog post "${blogData.title}" written to disk${
         pushed ? " and pushed to GitHub" : committed ? " (committed)" : ""
