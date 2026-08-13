@@ -1,7 +1,7 @@
 {
   "name": "@meri-imperiumi/signalk-offshore-blogging",
   "version": "0.1.2",
-  "description": "Offshore blogging system for Signal K - encode blog posts and weather requests for low-bandwidth satellite transmission",
+  "description": "Encode blog posts and weather requests for transmission via InReach or Winlink",
   "main": "plugin/index.js",
   "scripts": {
     "start": "node scripts/cloud-server.js",
@@ -26,7 +26,6 @@
   "signalk": {
     "appIcon": "./icon.png",
     "displayName": "Offshore Blogging",
-    "description": "Encode blog posts and weather requests for transmission via InReach or Winlink",
     "screenshots": [
       "./doc/weather-request.jpg",
       "./doc/download-grib.jpg"
