@@ -49,20 +49,27 @@ Configure the plugin in Signal K Server settings:
 
 ### Cloud Server Environment Variables
 
-For the cloud server (ping-pong and Saildocs tests, operational deployments):
+The cloud server (`node scripts/cloud-server.js` running `graphs/cloud-server.fbp`)
+reads all deployment config from environment variables via `core/ReadEnv` nodes —
+the graph carries no secrets. The mailbox.org IMAP/SMTP hosts and ports are
+fixed by SPEC.md and wired as literals in the graph, so `IMAP_HOST`,
+`IMAP_PORT`, `SMTP_HOST`, and `SMTP_PORT` are **not** used by the production
+graph (only the live test runners below read them).
+
+Required — `cloud-server.js` refuses to start if any is missing:
 
 ```bash
-# IMAP connection (for receiving InReach/Saildocs emails)
-export IMAP_HOST=imap.mailbox.org
-export IMAP_PORT=993
+# Mailbox credentials (IMAP for receiving InReach/Saildocs emails,
+# SMTP for sending replies and Saildocs requests)
 export IMAP_USERNAME=boat@lille-oe.de
 export IMAP_PASSWORD={{ YOUR_PASSWORD }}
-
-# SMTP connection (for sending replies and Saildocs requests)
-export SMTP_HOST=smtp.mailbox.org
-export SMTP_PORT=465
 export SMTP_USERNAME=boat@lille-oe.de
 export SMTP_PASSWORD={{ YOUR_PASSWORD }}
+
+# Paths
+export CLOUD_DB_PATH=/home/boat/.offshore-blogging/cloud.db # shared SQLite file
+export REPO_PATH=/home/boat/blog-repo                       # local clone of the blog repo
+export LOG_PATH=/home/boat/.offshore-blogging/errors.log    # ErrorLogger log file
 
 # InReach reply configuration
 export INREACH_REPLY_ADDRESS=cloud@boat.example.com
@@ -79,13 +86,32 @@ export INREACH_REPLY_ADDRESS=cloud@boat.example.com
 # To suppress a new transient: add its code to TRANSIENT_CODES in AlertComposer.js
 # Rate limited: max 1 alert per error code per hour (configurable)
 export ALERT_ADDRESS=operator@example.com
+```
 
-# Dacar authorization store (operator bootstraps with the `dacar` CLI)
+Optional:
+
+```bash
+# Dacar authorization store (operator bootstraps with the `dacar` CLI),
+# defaults to ~/.dacar when unset
 export DACAR_HOME=~/.dacar
-# Optional: explicit path to the `dacar` binary if not on PATH
+# Explicit path to the `dacar` binary if not on PATH
 # export DACAR_BIN=/usr/local/bin/dacar
+# Override the graph path (default: graphs/cloud-server.fbp)
+# export CLOUD_GRAPH=./graphs/cloud-server.fbp
+```
 
-# Device mapping (for ping-pong testing only)
+Live test runners only (`scripts/*-runner.js`, ignored by the production graph):
+
+```bash
+# Connection overrides
+export IMAP_HOST=imap.mailbox.org
+export IMAP_PORT=993
+export IMAP_MAILBOX=INBOX
+export SMTP_HOST=smtp.mailbox.org
+export SMTP_PORT=465
+
+# Device mapping (ping-pong testing only; AuthVerifier uses these instead
+# of the inreach_devices SQLite table)
 export TEST_DEVICE_ID={{ DEVICE_ID }}
 export TEST_IMEI={{ DEVICE_IMEI }}
 export TEST_IDENTITY_HASH={{ IDENTITY_HASH }}
@@ -139,21 +165,25 @@ restart needed. To converge this node's state with other nodes over
 Reticulum: `dacar sync` (and `dacar publish --all` to flush locally-granted
 deltas).
 
-These can also be set in a `.env` file (not committed to git):
+These can also be set in a `.env` file (not committed to git). Minimal set for
+the production cloud server:
 
 ```bash
-# .env (NOT committed to git)
-IMAP_HOST=imap.mailbox.org
-IMAP_PORT=993
+# .env (NOT committed to git) — full annotated version: .env.example
 IMAP_USERNAME=boat@lille-oe.de
 IMAP_PASSWORD=
-SMTP_HOST=smtp.mailbox.org
-SMTP_PORT=465
 SMTP_USERNAME=boat@lille-oe.de
 SMTP_PASSWORD=
+CLOUD_DB_PATH=/home/boat/.offshore-blogging/cloud.db
+REPO_PATH=/home/boat/blog-repo
+LOG_PATH=/home/boat/.offshore-blogging/errors.log
 INREACH_REPLY_ADDRESS=cloud@boat.example.com
+ALERT_ADDRESS=operator@example.com
 DACAR_HOME=/home/boat/.dacar
 ```
+
+Runner-only variables (`IMAP_HOST`, `SMTP_PORT`, `TEST_*`, `SAILDOCS_*`, …)
+can be added to the same file; see `.env.example`.
 
 ## Usage
 
