@@ -202,4 +202,33 @@ describe("GribStore", () => {
     const list = await s.list();
     assert.deepStrictEqual(list, []);
   });
+
+  it("stores GRIBs in source subdirectory (signalk-grib-weather-provider compatible)", async () => {
+    const dir = path.join(tmpDir, "subdir-test");
+    const sourceName = "inreach";
+    const s = new GribStore(dir, sourceName);
+    const grib = gribBytes(200);
+    const chunks = makeGribChunks("tst1", grib);
+    await s.persist(chunks);
+
+    // GRIB file is in the source subdirectory
+    const gribPath = s.getFilePath("tst1");
+    assert.ok(
+      gribPath.includes(path.join(dir, sourceName, "tst1.grb")),
+      `GRIB should be in ${path.join(dir, sourceName)}/, got ${gribPath}`,
+    );
+
+    // Verify file exists and has correct content
+    const onDisk = await fs.readFile(gribPath);
+    assert.strictEqual(onDisk.subarray(0, 4).toString("ascii"), "GRIB");
+    assert.strictEqual(onDisk.length, grib.length);
+
+    // Manifest is in the root directory
+    const manifestPath = path.join(dir, "manifest.json");
+    const manifestExists = await fs
+      .access(manifestPath)
+      .then(() => true)
+      .catch(() => false);
+    assert.ok(manifestExists, "manifest.json should be in root directory");
+  });
 });

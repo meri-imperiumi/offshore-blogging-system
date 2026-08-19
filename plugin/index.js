@@ -571,6 +571,10 @@ module.exports = (app) => {
   // use so tests can inject a temp dir via config.gribStoragePath without
   // touching the real Signal K data directory. Assembled GRIBs are persisted
   // here so any Signal K user can download them, not only the originator.
+  //
+  // GRIB files are stored in <dir>/<sourceName>/ (default: "inreach") to be
+  // compatible with signalk-grib-weather-provider, which can discover and
+  // ingest them for querying via the Signal K weather API.
   plugin.getGribStore = function getGribStore() {
     if (!plugin._gribStore) {
       const base =
@@ -583,7 +587,8 @@ module.exports = (app) => {
       const dir =
         plugin.config?.gribStoragePath ||
         path.join(base, "signalk-offshore-blogging", "gribs");
-      plugin._gribStore = new GribStore(dir);
+      const sourceName = plugin.config?.gribSourceName || "inreach";
+      plugin._gribStore = new GribStore(dir, sourceName);
     }
     return plugin._gribStore;
   };
@@ -1012,6 +1017,13 @@ module.exports = (app) => {
         description:
           "Where to persist assembled GRIB files so any Signal K user can download them. Defaults to <Signal K data dir>/signalk-offshore-blogging/gribs.",
         default: "",
+      },
+      gribSourceName: {
+        type: "string",
+        title: "GRIB source name",
+        description:
+          "Subdirectory name where GRIB files are stored (e.g., 'inreach'). This becomes the source name for signalk-grib-weather-provider. Configure the weather plugin's rootDirectory to this same path to enable GRIB querying.",
+        default: "inreach",
       },
     },
   };

@@ -46,6 +46,8 @@ Configure the plugin in Signal K Server settings:
 - **Custom dictionary path**: Path to custom compression dictionary file (optional)
 - **Default image message budget**: Default number of InReach messages for images (1-99)
 - **Reticulum identity path**: Path to a stored Reticulum identity file for Winlink signing (optional; falls back to the signalk-reticulum plugin's identity)
+- **GRIB storage path**: Where to persist assembled GRIB files (optional; defaults to `<Signal K data dir>/signalk-offshore-blogging/gribs`)
+- **GRIB source name**: Subdirectory name for GRIB files (default: `inreach`). Configure signalk-grib-weather-provider's rootDirectory to this same path to enable GRIB querying
 
 ### Cloud Server Environment Variables
 
@@ -186,6 +188,37 @@ Runner-only variables (`IMAP_HOST`, `SMTP_PORT`, `TEST_*`, `SAILDOCS_*`, …)
 can be added to the same file; see `.env.example`.
 
 ## Usage
+
+### GRIB File Storage and signalk-grib-weather-provider Integration
+
+GRIB files received via InReach are automatically stored in a directory structure
+compatible with [signalk-grib-weather-provider](https://github.com/SignalK/signalk-grib-weather-provider).
+
+- **Default location**: `<Signal K data dir>/signalk-offshore-blogging/gribs/inreach/`
+- **Source name**: `inreach` (configurable via plugin settings)
+- **File format**: `<transmissionId>.grb` (raw binary GRIB)
+
+To enable weather data querying via the Signal K weather API:
+
+1. Install signalk-grib-weather-plugin on the same Signal K server
+2. Configure its **Root directory** to point to the GRIB storage path:
+   - Default: `~/.signalk/signalk-offshore-blogging/gribs/`
+3. The plugin will automatically discover GRIBs in the `inreach/` subdirectory
+4. GRIBs will be indexed and cached for efficient querying
+
+The weather plugin will:
+- Scan the directory periodically (default: every 5 minutes)
+- Ingest new GRIB files into `.gribcache` format for fast position queries
+- Make weather data available via Signal K's `/resources/weather` API
+- Support `point`, `daily`, and `hourly` forecast queries
+
+**Note**: The offshore blogging plugin handles **downlink** GRIBs (cloud→boat) received
+via InReach. The weather plugin handles **querying** those GRIBs at specific positions
+for display in chart plotters and other applications.
+
+To change the source name or storage location, configure these plugin settings:
+- **GRIB storage path**: Base directory for GRIB storage
+- **GRIB source name**: Subdirectory name (becomes the provider ID in weather plugin)
 
 ### Web Interface
 
