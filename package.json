@@ -29,6 +29,9 @@
     "screenshots": [
       "./doc/weather-request.jpg",
       "./doc/download-grib.jpg"
+    ],
+    "recommends": [
+      "signalk-grib-weather-provider"
     ]
   },
   "dependencies": {
