@@ -594,10 +594,10 @@ module.exports = (app) => {
   };
 
   plugin.registerWithRouter = (router) => {
-    // Serve static files
-    router.get("/", (_req, res) => {
-      res.sendFile(path.join(__dirname, "..", "public", "index.html"));
-    });
+    // Static webapp files are served by the Signal K server itself: this
+    // package has the `signalk-webapp` keyword, so the server auto-mounts
+    // the public/ directory at /plugins/signalk-offshore-blogging/.
+    // Only the JSON API routes are registered here.
 
     // API: Feature status (so the UI can show/hide opt-in features)
     router.get("/api/status", (_req, res) => {
