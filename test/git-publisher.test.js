@@ -526,7 +526,11 @@ describe("GitPublisher git integration", () => {
     assert.ok(out, "should emit a confirmation");
     assert.match(out.payload, /committed/);
     assert.ok(!out.payload.includes("pushed"), "should not push (push=false)");
-    assert.strictEqual(out.published, true, "a real commit sets published=true");
+    assert.strictEqual(
+      out.published,
+      true,
+      "a real commit sets published=true",
+    );
 
     // The commit message keeps its spaces — the old shell-join exec would
     // have truncated `lofi: 0809 Calm Seas` and errored on the extra words.
@@ -611,11 +615,7 @@ describe("GitPublisher git integration", () => {
       push: true,
     });
     assert.match(first.payload, /pushed to GitHub/);
-    assert.strictEqual(
-      first.published,
-      true,
-      "first publish is a real commit",
-    );
+    assert.strictEqual(first.published, true, "first publish is a real commit");
     assert.strictEqual(await bareCount(bareDir), 1);
     const localCommitsAfterFirst = parseInt(
       await git.exec("rev-list", "--count", "HEAD"),

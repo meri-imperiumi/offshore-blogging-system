@@ -46,7 +46,8 @@ class MetricCounter extends Component {
           datatype: "string",
           control: true,
           required: true,
-          description: "Which metric to increment: msg_in | msg_out | blog_posts",
+          description:
+            "Which metric to increment: msg_in | msg_out | blog_posts",
         },
         dbpath: {
           datatype: "string",

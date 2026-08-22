@@ -136,7 +136,8 @@ describe("cloud-server.fbp", () => {
     assert.ok(publisherToCounter, "GitPublisher should feed BlogPostCounter");
 
     const counterToDispatcher = graph.edges.some(
-      (e) => e.from.node === "BlogPostCounter" && e.to.node === "ReplyDispatcher",
+      (e) =>
+        e.from.node === "BlogPostCounter" && e.to.node === "ReplyDispatcher",
     );
     assert.ok(
       counterToDispatcher,
@@ -173,12 +174,10 @@ describe("cloud-server.fbp", () => {
     // request twice than to ack early and silently lose it.
     assert.ok(graph);
     const smtpToCounter = graph.edges.some(
-      (e) => e.from.node === "SmtpResponder" && e.to.node === "MsgOutSmtpCounter",
+      (e) =>
+        e.from.node === "SmtpResponder" && e.to.node === "MsgOutSmtpCounter",
     );
-    assert.ok(
-      smtpToCounter,
-      "SmtpResponder OUT should feed MsgOutSmtpCounter",
-    );
+    assert.ok(smtpToCounter, "SmtpResponder OUT should feed MsgOutSmtpCounter");
     const counterToAcker = graph.edges.some(
       (e) => e.from.node === "MsgOutSmtpCounter" && e.to.node === "ImapAcker",
     );

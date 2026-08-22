@@ -71,7 +71,11 @@ describe("MetricCounter component", () => {
       ackedUids: [1, 2],
     };
     const out = await handle(component, failedMsg);
-    assert.strictEqual(db.getMetrics().msg_in, 0, "failed messages not counted");
+    assert.strictEqual(
+      db.getMetrics().msg_in,
+      0,
+      "failed messages not counted",
+    );
     assert.strictEqual(out, failedMsg, "failed message forwarded unchanged");
   });
 
