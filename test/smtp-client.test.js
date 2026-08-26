@@ -1,16 +1,49 @@
 import assert from "node:assert";
-import { readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
-import { afterEach, describe, it } from "node:test";
+import os from "node:os";
+import path from "node:path";
+import { after, afterEach, before, describe, it } from "node:test";
 import tls from "node:tls";
 
 const require = createRequire(import.meta.url);
 const SmtpClient = require("../lib/SmtpClient.js");
 
 // Self-signed cert for localhost, used to exercise the STARTTLS upgrade.
-const KEY = readFileSync("/tmp/smtp-test-key.pem");
-const CERT = readFileSync("/tmp/smtp-test-cert.pem");
+// Generated on the fly into a per-run temp dir so the suite is self-contained
+// (no external `openssl ...` prerequisite, no shared /tmp files that race
+// with parallel runs). Falls back to /tmp/smtp-test-*.pem if present so the
+// previous manual workflow still works.
+let KEY;
+let CERT;
+let certDir;
+
+before(() => {
+  const fallbackKey = "/tmp/smtp-test-key.pem";
+  const fallbackCert = "/tmp/smtp-test-cert.pem";
+  if (existsSync(fallbackKey) && existsSync(fallbackCert)) {
+    KEY = readFileSync(fallbackKey);
+    CERT = readFileSync(fallbackCert);
+    return;
+  }
+  certDir = mkdtempSync(path.join(os.tmpdir(), "smtp-test-"));
+  const keyPath = path.join(certDir, "key.pem");
+  const certPath = path.join(certDir, "cert.pem");
+  execSync(
+    `openssl req -x509 -newkey rsa:2048 -nodes ` +
+      `-keyout "${keyPath}" -out "${certPath}" ` +
+      `-days 1 -subj "/CN=localhost"`,
+    { stdio: ["ignore", "ignore", "ignore"] },
+  );
+  KEY = readFileSync(keyPath);
+  CERT = readFileSync(certPath);
+});
+
+after(() => {
+  if (certDir) rmSync(certDir, { recursive: true, force: true });
+});
 
 /**
  * Minimal mock SMTP server. Captures the full conversation and the message
