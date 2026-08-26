@@ -334,3 +334,153 @@ test("download sets application/x-grib2 Content-Type for GRIB2", async () => {
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+// --- Direct GRIB upload (Winlink/Saildocs path) ---
+
+function makeGribBinary(payloadLen, edition = 2) {
+  return Buffer.concat([
+    Buffer.from("GRIB", "ascii"),
+    Buffer.from([0x00, 0x00, 0x00, 0x00]),
+    Buffer.from([edition]), // edition byte at offset 7
+    Buffer.alloc(payloadLen, 0x43), // 'C'
+  ]);
+}
+
+test("upload via JSON gribBase64 persists and lists a GRIB", async () => {
+  const fs = require("node:fs").promises;
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-up1-"));
+  try {
+    const { handlers } = await setupPlugin({ gribStoragePath: dir });
+    const grib = makeGribBinary(200);
+    const req = {
+      headers: { "content-type": "application/json" },
+      body: { gribBase64: grib.toString("base64") },
+      query: { filename: "saildocs-wind.grb" },
+    };
+    const res = mockRes();
+    await handlers["POST /api/grib/upload"](req, res);
+    assert.strictEqual(res.statusCode, 201, res.body?.error);
+    assert.strictEqual(res.body.ok, true);
+    const g = res.body.grib;
+    assert.strictEqual(g.size, grib.length);
+    assert.strictEqual(g.source, "upload");
+    assert.strictEqual(g.totalChunks, null);
+    assert.strictEqual(g.originalFilename, "saildocs-wind.grb");
+    assert.match(g.transmissionId, /^[a-zA-Z0-9]{4}$/);
+
+    // File exists on disk in the source subdirectory.
+    const filepath = path.join(dir, "inreach", `${g.transmissionId}.grb`);
+    const onDisk = await fs.readFile(filepath);
+    assert.strictEqual(onDisk.subarray(0, 4).toString("ascii"), "GRIB");
+
+    // Listing includes it.
+    const listRes = mockRes();
+    await handlers["GET /api/gribs"]({}, listRes);
+    assert.ok(
+      listRes.body.gribs.some((e) => e.transmissionId === g.transmissionId),
+    );
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("upload via raw octet-stream body persists a GRIB", async () => {
+  const fs = require("node:fs").promises;
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-up2-"));
+  try {
+    const { handlers } = await setupPlugin({ gribStoragePath: dir });
+    const grib = makeGribBinary(150, 1);
+    const req = {
+      headers: { "content-type": "application/octet-stream" },
+      body: grib, // raw Buffer as body
+      query: { id: "up01", filename: "gfs.grb" },
+    };
+    const res = mockRes();
+    await handlers["POST /api/grib/upload"](req, res);
+    assert.strictEqual(res.statusCode, 201, res.body?.error);
+    assert.strictEqual(res.body.grib.transmissionId, "up01");
+    assert.strictEqual(res.body.grib.originalFilename, "gfs.grb");
+
+    const onDisk = await fs.readFile(path.join(dir, "inreach", "up01.grb"));
+    assert.deepStrictEqual(onDisk, grib);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("upload dedups the same GRIB (same derived id)", async () => {
+  const fs = require("node:fs").promises;
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-up3-"));
+  try {
+    const { handlers } = await setupPlugin({ gribStoragePath: dir });
+    const grib = makeGribBinary(300);
+    const req = {
+      headers: { "content-type": "application/json" },
+      body: { gribBase64: grib.toString("base64") },
+      query: {},
+    };
+    const r1 = mockRes();
+    await handlers["POST /api/grib/upload"](req, r1);
+    assert.strictEqual(r1.statusCode, 201);
+    await new Promise((r) => setTimeout(r, 5));
+    const r2 = mockRes();
+    await handlers["POST /api/grib/upload"](req, r2);
+    assert.strictEqual(r2.statusCode, 201);
+    assert.strictEqual(
+      r1.body.grib.transmissionId,
+      r2.body.grib.transmissionId,
+    );
+    const listRes = mockRes();
+    await handlers["GET /api/gribs"]({}, listRes);
+    assert.strictEqual(listRes.body.gribs.length, 1);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("upload rejects non-GRIB bytes with 422", async () => {
+  const { handlers } = await setupPlugin({});
+  const bad = Buffer.concat([
+    Buffer.from("XXXX", "ascii"),
+    Buffer.alloc(100, 0x41),
+  ]);
+  const req = {
+    headers: { "content-type": "application/json" },
+    body: { gribBase64: bad.toString("base64") },
+    query: {},
+  };
+  const res = mockRes();
+  await handlers["POST /api/grib/upload"](req, res);
+  assert.strictEqual(res.statusCode, 422);
+});
+
+test("upload rejects empty JSON body with 400", async () => {
+  const { handlers } = await setupPlugin({});
+  const req = {
+    headers: { "content-type": "application/json" },
+    body: {},
+    query: {},
+  };
+  const res = mockRes();
+  await handlers["POST /api/grib/upload"](req, res);
+  assert.strictEqual(res.statusCode, 400);
+});
+
+test("upload rejects invalid explicit id with 400", async () => {
+  const { handlers } = await setupPlugin({});
+  const grib = makeGribBinary(100);
+  const req = {
+    headers: { "content-type": "application/json" },
+    body: { gribBase64: grib.toString("base64") },
+    query: { id: "../etc" },
+  };
+  const res = mockRes();
+  await handlers["POST /api/grib/upload"](req, res);
+  assert.strictEqual(res.statusCode, 400);
+});

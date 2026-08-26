@@ -232,3 +232,141 @@ describe("GribStore", () => {
     assert.ok(manifestExists, "manifest.json should be in root directory");
   });
 });
+
+describe("GribStore direct binary upload (Winlink/Saildocs path)", () => {
+  let tmpDir;
+  let store;
+
+  before(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "grib-store-bin-"));
+    store = new GribStore(tmpDir, "inreach");
+  });
+  after(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("verifyGrib accepts a GRIB2 buffer and returns the edition", () => {
+    const g2 = Buffer.concat([
+      Buffer.from("GRIB", "ascii"),
+      Buffer.from([0, 0, 0, 0]),
+      Buffer.from([0x02]),
+      Buffer.alloc(40, 0x44),
+    ]);
+    const r = store.verifyGrib(g2);
+    assert.strictEqual(r.magic, "GRIB");
+    assert.strictEqual(r.edition, 2);
+  });
+
+  it("verifyGrib accepts a GRIB1 buffer", () => {
+    const g1 = Buffer.concat([
+      Buffer.from("GRIB", "ascii"),
+      Buffer.from([0, 0, 0, 0]),
+      Buffer.from([0x01]),
+      Buffer.alloc(40, 0x44),
+    ]);
+    assert.strictEqual(store.verifyGrib(g1).edition, 1);
+  });
+
+  it("verifyGrib rejects bad magic with BAD_MAGIC", () => {
+    const bad = Buffer.concat([
+      Buffer.from("XXXX", "ascii"),
+      Buffer.alloc(40, 0x44),
+    ]);
+    assert.throws(
+      () => store.verifyGrib(bad),
+      (err) => err.code === "BAD_MAGIC",
+    );
+  });
+
+  it("verifyGrib rejects too-short buffers with BAD_FORMAT", () => {
+    assert.throws(
+      () => store.verifyGrib(Buffer.from("GRIB")),
+      (err) => err.code === "BAD_FORMAT",
+    );
+    assert.throws(
+      () => store.verifyGrib(Buffer.alloc(4)),
+      (err) => err.code === "BAD_FORMAT",
+    );
+  });
+
+  it("deriveId is deterministic and 4-char Base62", () => {
+    const a = gribBytes(250);
+    const b = gribBytes(250);
+    assert.strictEqual(store.deriveId(a), store.deriveId(a));
+    assert.match(store.deriveId(a), /^[a-zA-Z0-9]{4}$/);
+    // Different content yields (very likely) a different id.
+    const other = gribBytes(251);
+    // Not asserting inequality (collisions are possible) — just that it ran.
+    assert.ok(typeof store.deriveId(other) === "string");
+  });
+
+  it("persistBinary stores a complete GRIB and records source='upload'", async () => {
+    const grib = gribBytes(220);
+    const entry = await store.persistBinary(grib, {
+      filename: "saildocs.grb",
+      requestedBy: "operator",
+    });
+    assert.match(entry.transmissionId, /^[a-zA-Z0-9]{4}$/);
+    assert.strictEqual(entry.size, grib.length);
+    assert.strictEqual(entry.source, "upload");
+    assert.strictEqual(entry.totalChunks, null);
+    assert.strictEqual(entry.originalFilename, "saildocs.grb");
+    assert.strictEqual(entry.requestedBy, "operator");
+
+    const onDisk = await fs.readFile(store.getFilePath(entry.transmissionId));
+    assert.deepStrictEqual(onDisk, grib);
+  });
+
+  it("persistBinary dedups same content (same derived id)", async () => {
+    const dir = path.join(tmpDir, "dedup-bin");
+    const s = new GribStore(dir, "inreach");
+    const grib = gribBytes(180);
+    const e1 = await s.persistBinary(grib);
+    await new Promise((r) => setTimeout(r, 5));
+    const e2 = await s.persistBinary(grib);
+    assert.strictEqual(e1.transmissionId, e2.transmissionId);
+    assert.strictEqual(e1.createdAt, e2.createdAt);
+    assert.ok(e2.updatedAt >= e1.updatedAt);
+    const list = await s.list();
+    assert.strictEqual(list.length, 1);
+  });
+
+  it("persistBinary accepts an explicit id", async () => {
+    const dir = path.join(tmpDir, "explicit-id");
+    const s = new GribStore(dir, "inreach");
+    const entry = await s.persistBinary(gribBytes(120), { id: "wlnk" });
+    assert.strictEqual(entry.transmissionId, "wlnk");
+  });
+
+  it("persistBinary rejects an invalid explicit id with BAD_ID", async () => {
+    await assert.rejects(
+      () => store.persistBinary(gribBytes(120), { id: "../x" }),
+      (err) => err.code === "BAD_ID",
+    );
+  });
+
+  it("persistBinary rejects bad magic with BAD_MAGIC", async () => {
+    const bad = Buffer.concat([
+      Buffer.from("XXXX", "ascii"),
+      Buffer.alloc(120, 0x41),
+    ]);
+    await assert.rejects(
+      () => store.persistBinary(bad),
+      (err) => err.code === "BAD_MAGIC",
+    );
+  });
+
+  it("uploaded GRIB lands in the source subdirectory (provider-compatible)", async () => {
+    const dir = path.join(tmpDir, "provider-compat");
+    const sourceName = "inreach";
+    const s = new GribStore(dir, sourceName);
+    const entry = await s.persistBinary(gribBytes(140), { id: "pv01" });
+    const filepath = s.getFilePath(entry.transmissionId);
+    assert.ok(
+      filepath.includes(path.join(dir, sourceName, "pv01.grb")),
+      `expected under ${path.join(dir, sourceName)}/, got ${filepath}`,
+    );
+    const onDisk = await fs.readFile(filepath);
+    assert.strictEqual(onDisk.subarray(0, 4).toString("ascii"), "GRIB");
+  });
+});

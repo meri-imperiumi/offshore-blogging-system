@@ -398,6 +398,19 @@
         <button id="clearChunksBtn" type="button">Clear All</button>
       </div>
 
+      <div class="card">
+        <h2>Upload a GRIB file</h2>
+        <div class="info">
+          If you received a complete GRIB file via Winlink/Saildocs (for example a <code>.grb</code> attachment from <code>query@saildocs.com</code>), upload it here. It is stored alongside the InReach-assembled GRIBs so <code>signalk-grib-weather-provider</code> can ingest it and any Signal K user can download it.
+        </div>
+        <div class="form-group">
+          <label for="gribFileInput">Choose a GRIB file (.grb / .grib2):</label>
+          <input type="file" id="gribFileInput" accept=".grb,.grib,.grb2,.grib2,application/x-grib,application/x-grib2,application/octet-stream">
+        </div>
+        <button id="uploadGribBtn" type="button">Upload GRIB</button>
+        <div id="uploadGribResult" style="display:none; margin-top:10px;"></div>
+      </div>
+
       <div id="chunksList" style="display: none;">
         <div class="card">
           <h3>Received Chunks</h3>

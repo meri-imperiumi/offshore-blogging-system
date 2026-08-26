@@ -207,6 +207,12 @@ class OffshoreBloggingUI {
       .getElementById("clearChunksBtn")
       .addEventListener("click", () => this.clearChunks());
 
+    // Upload a complete GRIB file (Winlink/Saildocs path) directly to the
+    // server-side store so signalk-grib-weather-provider can ingest it.
+    document
+      .getElementById("uploadGribBtn")
+      .addEventListener("click", () => this.uploadGrib());
+
     // Populate the shared, latest-first list of persisted GRIBs.
     this.loadStoredGribs();
   }
@@ -1074,6 +1080,63 @@ class OffshoreBloggingUI {
     this.chunks = [];
     this.renderChunks();
     document.getElementById("reassembleResults").style.display = "none";
+  }
+
+  /**
+   * Upload a complete GRIB file (Winlink/Saildocs path). The file is sent
+   * as raw bytes (application/octet-stream) and persisted server-side in the
+   * same store as InReach-assembled GRIBs, so signalk-grib-weather-provider
+   * can ingest it for querying and any Signal K user can download it.
+   */
+  async uploadGrib() {
+    const input = document.getElementById("gribFileInput");
+    const resultDiv = document.getElementById("uploadGribResult");
+    resultDiv.style.display = "block";
+
+    if (!input.files || input.files.length === 0) {
+      resultDiv.innerHTML =
+        '<p style="color:#ff6b6b;">Please choose a GRIB file first.</p>';
+      return;
+    }
+    const file = input.files[0];
+    const originalName = file.name || "";
+
+    try {
+      const buf = await file.arrayBuffer();
+      const url =
+        `/plugins/signalk-offshore-blogging/api/grib/upload` +
+        `?filename=${encodeURIComponent(originalName)}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: new Uint8Array(buf),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "GRIB upload failed");
+      }
+      const g = data.grib;
+      const downloadUrl = `/plugins/signalk-offshore-blogging/api/gribs/${encodeURIComponent(g.id)}/download`;
+      resultDiv.innerHTML = `
+        <div class="success">
+          <h4>Uploaded GRIB (${this.escapeHtml(g.transmissionId)})</h4>
+          <p><strong>Size:</strong> ${g.size} bytes</p>
+          ${g.originalFilename ? `<p><strong>Original:</strong> ${this.escapeHtml(g.originalFilename)}</p>` : ""}
+          <p>Persisted server-side — available to all Signal K users.</p>
+          <a href="${downloadUrl}" download="${g.transmissionId}.grb" class="btn">Download .grb</a>
+        </div>
+      `;
+      // Reset the input so the same file can be re-selected if needed.
+      input.value = "";
+      // Refresh the shared, latest-first list with the new entry.
+      this.loadStoredGribs();
+    } catch (error) {
+      resultDiv.innerHTML = `
+        <div class="error">
+          <p>${this.escapeHtml(error.message)}</p>
+        </div>
+      `;
+    }
   }
 }
 

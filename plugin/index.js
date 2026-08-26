@@ -884,6 +884,92 @@ module.exports = (app) => {
       }
     });
 
+    // API: Upload a complete GRIB file (Winlink/Saildocs path).
+    //
+    // When a GRIB is received via Winlink/Pat as an email attachment from
+    // query@saildocs.com, the user already has the whole file on a device.
+    // This endpoint accepts the raw GRIB bytes (either as the request body
+    // with Content-Type application/octet-stream, or as JSON
+    // `{ "gribBase64": "..." }` for browsers that can't easily send raw
+    // bodies) and persists it through the same GribStore so it lands in the
+    // signalk-grib-weather-provider source directory — making it queryable
+    // via the Signal K weather API and downloadable by any Signal K user.
+    //
+    // Optional metadata via query string or headers:
+    //   ?id=<4-char>      — explicit id (default: hash of the binary)
+    //   ?filename=<name>  — original filename (e.g. the email attachment name)
+    //   ?requestedBy=<id> — originator identity hash / label
+    router.post("/api/grib/upload", async (req, res) => {
+      try {
+        let binary;
+        const contentType = (req.headers["content-type"] || "").toLowerCase();
+
+        if (contentType.includes("application/json")) {
+          // JSON form: { gribBase64: "..." }
+          const body = req.body || {};
+          const b64 = body.gribBase64;
+          if (typeof b64 !== "string" || b64.length === 0) {
+            return res
+              .status(400)
+              .json({ error: "gribBase64 is required for JSON uploads" });
+          }
+          binary = Buffer.from(b64.replace(/\s+/g, ""), "base64");
+        } else {
+          // Raw body: the request body IS the GRIB bytes.
+          // Express exposes the body on req.body; for unknown content types it
+          // may be a Buffer, a string, or empty depending on body parsing.
+          const raw = req.body;
+          if (Buffer.isBuffer(raw)) {
+            binary = raw;
+          } else if (typeof raw === "string") {
+            binary = Buffer.from(raw, "binary");
+          } else if (raw && typeof raw === "object" && raw.type === "Buffer") {
+            // Parsed JSON { type:'Buffer', data:[...] } fallback.
+            binary = Buffer.from(raw.data);
+          } else {
+            return res.status(400).json({
+              error:
+                "Send the raw GRIB bytes as the body (Content-Type: " +
+                "application/octet-stream), or JSON { gribBase64 }.",
+            });
+          }
+        }
+
+        // Pull optional metadata from query (or headers) so the raw-body
+        // path doesn't need JSON.
+        const id = req.query.id || req.headers["x-grib-id"];
+        const filename = req.query.filename || req.headers["x-grib-filename"];
+        const requestedBy =
+          req.query.requestedBy || req.headers["x-grib-requested-by"];
+
+        const store = plugin.getGribStore();
+        const entry = await store.persistBinary(binary, {
+          id: id || undefined,
+          filename: filename || undefined,
+          requestedBy: requestedBy || undefined,
+        });
+        app.debug(
+          `Uploaded GRIB ${entry.transmissionId} (${entry.size} bytes)`,
+        );
+        res.status(201).json({ ok: true, grib: entry });
+      } catch (error) {
+        if (error.code === "BAD_MAGIC") {
+          return res.status(422).json({
+            error: error.message,
+            magic: error.magic,
+          });
+        }
+        if (error.code === "BAD_FORMAT") {
+          return res.status(400).json({ error: error.message });
+        }
+        if (error.code === "BAD_ID") {
+          return res.status(400).json({ error: error.message });
+        }
+        app.error(`GRIB upload error: ${error.message}`);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     // API: Sign for Winlink
     router.post("/api/sign", async (req, res) => {
       if (!plugin.config?.enableBlogEncoding) {
@@ -1022,7 +1108,7 @@ module.exports = (app) => {
         type: "string",
         title: "GRIB source name",
         description:
-          "Subdirectory name where GRIB files are stored (e.g., 'inreach'). This becomes the source name for signalk-grib-weather-provider. Configure the weather plugin's rootDirectory to this same path to enable GRIB querying.",
+          "Subdirectory where GRIB files are stored (e.g., 'inreach'). This becomes the source name for signalk-grib-weather-provider. Configure the weather plugin's rootDirectory to this same path to enable GRIB querying. Both InReach-assembled and directly-uploaded (Winlink/Saildocs) GRIBs land here.",
         default: "inreach",
       },
     },
