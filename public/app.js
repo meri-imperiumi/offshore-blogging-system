@@ -401,28 +401,23 @@ class OffshoreBloggingUI {
 
       previewData.previews.forEach((preview, idx) => {
         const wrapper = document.createElement("div");
-        wrapper.style.marginBottom = "20px";
-        wrapper.style.border = "1px solid var(--border-color)";
-        wrapper.style.padding = "15px";
-        wrapper.style.borderRadius = "5px";
-        wrapper.style.backgroundColor = "var(--card-bg)";
+        wrapper.className = "preview-item";
 
         const isError = preview.error !== undefined;
 
         wrapper.innerHTML = `
-          <p style="margin-bottom: 10px; color: var(--highlight-color);">
+          <p class="preview-title">
             <strong>Image ${idx + 1}: ${preview.alt || "(no alt text)"}</strong>
-            ${isError ? ` <span style="color: #ff6b6b;">(Error: ${preview.error})</span>` : ""}
+            ${isError ? ` <span class="preview-error">(Error: ${preview.error})</span>` : ""}
           </p>
           ${
             !isError
               ? `
-            <img src="data:image/webp;base64,${preview.base64}" 
-                 style="max-width: 100%; max-height: 200px; border-radius: 3px; border: 1px solid #333; margin-bottom: 10px;" 
+            <img src="data:image/webp;base64,${preview.base64}"
                  alt="Compressed preview">
-            <p style="font-size: 0.85rem; margin: 0;">
-              <strong>Size:</strong> ${preview.width}x${preview.height}px | 
-              <strong>Quality:</strong> ${preview.quality}% | 
+            <p class="preview-meta">
+              <strong>Size:</strong> ${preview.width}x${preview.height}px |
+              <strong>Quality:</strong> ${preview.quality}% |
               <strong>Compressed:</strong> ${preview.compressedSize} bytes
             </p>
           `
@@ -496,19 +491,19 @@ class OffshoreBloggingUI {
       const metaCopied = this.copiedMessages.has(winlinkData.metadata);
       const contentCopied = this.copiedMessages.has(winlinkData.content);
       list.innerHTML = `
-        <p style="margin-bottom: 10px; color: var(--highlight-color);">
+        <p style="margin-bottom: 10px; color: var(--color-teal);">
           <strong>Subject:</strong> Blog Post via Vara HF
         </p>
         <p style="margin-bottom: 10px;">Copy the following and paste into a new Winlink email:</p>
         <div class="message-item${metaCopied ? " message-copied" : ""}">
-          <div class="message-content" style="white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(winlinkData.metadata)}</div>
+          <div class="message-content">${this.escapeHtml(winlinkData.metadata)}</div>
           <button class="copy-btn${metaCopied ? " copied" : ""}" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(winlinkData.metadata)}', this)">${metaCopied ? "Copied ✓" : "Copy Metadata"}</button>
         </div>
         <div class="message-item${contentCopied ? " message-copied" : ""}">
-          <div class="message-content" style="white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;">${this.escapeHtml(winlinkData.content)}</div>
+          <div class="message-content">${this.escapeHtml(winlinkData.content)}</div>
           <button class="copy-btn${contentCopied ? " copied" : ""}" onclick="OffshoreBloggingUI.copyToClipboard('${this.escapeForAttribute(winlinkData.content)}', this)">${contentCopied ? "Copied ✓" : "Copy Content"}</button>
         </div>
-        <p style="color: #888; font-size: 0.85rem; margin-top: 10px;">
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 10px;">
           <strong>Identity Hash:</strong> ${winlinkData.identityHash}
         </p>
       `;
@@ -765,6 +760,17 @@ class OffshoreBloggingUI {
     document.getElementById("weatherMessages").textContent = estimatedMsgs;
     document.getElementById("weatherModel").textContent = model.toUpperCase();
 
+    // Color the message count by transmission cost: nominal green up to the
+    // 10-message threshold, warning orange above it (the server will ask
+    // for confirmation before transmitting).
+    const weatherStat = document
+      .getElementById("weatherMessages")
+      .closest(".stat-item");
+    if (weatherStat) {
+      weatherStat.classList.toggle("theme-orange", estimatedMsgs > 10);
+      weatherStat.classList.toggle("theme-green", estimatedMsgs <= 10);
+    }
+
     const list = document.getElementById("weatherMessageList");
     list.innerHTML = `
       <div class="info">
@@ -872,7 +878,7 @@ class OffshoreBloggingUI {
       for (let i = 1; i <= total; i++) {
         if (!group.chunks[i]) missing.push(i);
       }
-      const statusClass = missing.length === 0 ? "success" : "info";
+      const statusClass = missing.length === 0 ? "success" : "warning";
       const label = OffshoreBloggingUI.chunkTypeLabel(group.typeChar);
       html += `
         <div class="${statusClass}" style="margin-bottom: 10px;">
@@ -964,7 +970,7 @@ class OffshoreBloggingUI {
             html += `
               <div class="success">
                 <h4>Blog Post ${group.transmissionId} (Image)</h4>
-                <img src="${data.image}" style="max-width: 100%; border-radius: 5px;" alt="Decoded image">
+                <img src="${data.image}" alt="Decoded image">
               </div>
             `;
           }
@@ -1052,7 +1058,7 @@ class OffshoreBloggingUI {
       const gribs = data.gribs || [];
       if (gribs.length === 0) {
         container.innerHTML =
-          '<p style="color:#888;">No persisted GRIBs yet.</p>';
+          '<p style="color: var(--text-muted);">No persisted GRIBs yet.</p>';
         return;
       }
       container.innerHTML = gribs
@@ -1072,7 +1078,7 @@ class OffshoreBloggingUI {
         .join("");
     } catch (_error) {
       container.innerHTML =
-        '<p style="color:#ff6b6b;">Could not load stored GRIBs.</p>';
+        '<p style="color: var(--color-red);">Could not load stored GRIBs.</p>';
     }
   }
 
@@ -1095,7 +1101,7 @@ class OffshoreBloggingUI {
 
     if (!input.files || input.files.length === 0) {
       resultDiv.innerHTML =
-        '<p style="color:#ff6b6b;">Please choose a GRIB file first.</p>';
+        '<p style="color: var(--color-red);">Please choose a GRIB file first.</p>';
       return;
     }
     const file = input.files[0];

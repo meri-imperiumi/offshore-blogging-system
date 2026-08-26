@@ -1,69 +1,178 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-mode="night">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Offshore Blogging</title>
   <style>
     :root {
-      --bg-color: #1a1a2e;
-      --card-bg: #16213e;
-      --text-color: #eaeaea;
-      --accent-color: #0f3460;
-      --highlight-color: #e94560;
-      --success-color: #2ecc71;
-      --border-color: #2a3f5f;
+      /* Canvas */
+      --bg-base: #080a0c;
+      --bg-panel: #111414;
+      --bg-panel-muted: #0a0c0c;
+
+      /* Semantic themes */
+      --color-green: #6b9e78;  /* Standard / Nominal operation */
+      --color-green-rgb: 107, 158, 120;
+      --color-teal: #4b8b99;   /* Surplus / Primary active systems */
+      --color-teal-rgb: 75, 139, 153;
+      --color-orange: #c77b28; /* Warning / Degraded / Alternate power */
+      --color-orange-rgb: 199, 123, 40;
+      --color-red: #c94b4b;    /* CRITICAL / Alarm / Danger */
+      --color-red-rgb: 201, 75, 75;
+      --color-grey: #444444;   /* Offline / Inactive */
+      --color-grey-rgb: 68, 68, 68;
+
+      /* Typography */
+      --text-main: #ffffff;
+      --text-muted: #888899;
+      --font-ui: system-ui, -apple-system, sans-serif;
+      --font-mono: ui-monospace, 'Fira Code', monospace;
+
+      /* Active theme (teal: primary active system) */
+      --theme-color: var(--color-teal);
+      --theme-color-rgb: var(--color-teal-rgb);
+
+      /* Panel framing */
+      --border-faint: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Theme classes swap the local semantic color */
+    .theme-green  { --theme-color: var(--color-green);  --theme-color-rgb: var(--color-green-rgb); }
+    .theme-teal   { --theme-color: var(--color-teal);   --theme-color-rgb: var(--color-teal-rgb); }
+    .theme-orange { --theme-color: var(--color-orange); --theme-color-rgb: var(--color-orange-rgb); }
+    .theme-red    { --theme-color: var(--color-red);    --theme-color-rgb: var(--color-red-rgb); }
+    .theme-offline { --theme-color: var(--color-grey);  --theme-color-rgb: var(--color-grey-rgb); }
+
+    /* Day mode overrides: the host Signal K app applies data-mode to <html>
+       based on vessels.self.environment.mode. Night is the default. */
+    html[data-mode="day"] {
+      --bg-base: #b6bbb7;
+      --bg-panel: #dfe4e0;
+      --bg-panel-muted: #cfd4cf;
+      --text-main: #0a0c0c;
+      --text-muted: #4e5359;
+      --border-faint: rgba(0, 0, 0, 0.3);
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      border-radius: 0;
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background-color: var(--bg-color);
-      color: var(--text-color);
+      font-family: var(--font-ui);
+      background-color: var(--bg-base);
+      color: var(--text-main);
       line-height: 1.6;
-      padding: 20px;
+      padding: clamp(12px, 3vw, 24px);
     }
 
     .container {
-      max-width: 800px;
+      max-width: 960px;
       margin: 0 auto;
     }
 
     h1 {
-      font-size: 1.8rem;
+      font-family: var(--font-mono);
+      font-size: clamp(1.1rem, 2.5vw, 1.4rem);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--color-teal);
       margin-bottom: 20px;
-      color: var(--highlight-color);
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
 
+    /* Flat square "system active" indicator */
+    h1::before {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background: var(--color-teal);
+      flex-shrink: 0;
+    }
+
+    h2, h3, h4 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--theme-color);
+      margin-bottom: 12px;
+    }
+
+    /* Panels with hardware mounting brackets */
+    .card {
+      position: relative;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-faint);
+      padding: clamp(16px, 3vw, 24px);
+      margin-bottom: 20px;
+    }
+
+    .card::before,
+    .card::after {
+      content: "";
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-color: var(--theme-color);
+      border-style: solid;
+    }
+
+    .card::before {
+      top: -1px;
+      left: -1px;
+      border-width: 2px 0 0 2px;
+    }
+
+    .card::after {
+      bottom: -1px;
+      right: -1px;
+      border-width: 0 2px 2px 0;
+    }
+
+    /* Tabs: bracketed toggle buttons */
     .tabs {
       display: flex;
-      gap: 10px;
+      flex-wrap: wrap;
+      gap: 8px;
       margin-bottom: 20px;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 10px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-faint);
     }
 
     .tab {
-      padding: 10px 20px;
-      background: var(--card-bg);
-      border: none;
-      color: var(--text-color);
-      cursor: pointer;
-      border-radius: 5px 5px 0 0;
-      font-size: 1rem;
+      min-height: 48px;
+      padding: 6px 14px;
+      background: transparent;
+      border: 1px solid var(--color-grey);
+      color: var(--text-muted);
     }
 
+    /* Each tab carries its section's semantic color */
+    .tab[data-tab="weather"] { --theme-color: var(--color-green);  --theme-color-rgb: var(--color-green-rgb); }
+    .tab[data-tab="decode"]  { --theme-color: var(--color-orange); --theme-color-rgb: var(--color-orange-rgb); }
+
+    .tab::before { content: "["; margin-right: 8px; }
+    .tab::after { content: "]"; margin-left: 8px; }
+
     .tab:hover {
-      background: var(--accent-color);
+      background: transparent;
+      border-color: var(--theme-color);
+      color: var(--theme-color);
     }
 
     .tab.active {
-      background: var(--highlight-color);
+      background: var(--theme-color);
+      border-color: var(--theme-color);
+      color: var(--bg-base);
     }
 
     .tab-content {
@@ -74,62 +183,298 @@
       display: block;
     }
 
-    .card {
-      background: var(--card-bg);
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 20px;
-      border: 1px solid var(--border-color);
-    }
-
+    /* Forms: hardware inputs */
     .form-group {
-      margin-bottom: 15px;
+      margin-bottom: 16px;
     }
 
     label {
       display: block;
-      margin-bottom: 5px;
-      font-weight: 500;
+      margin-bottom: 6px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--theme-color);
+    }
+
+    small {
+      color: var(--text-muted);
+      font-size: 0.75rem;
     }
 
     input[type="text"],
     input[type="number"],
-    textarea {
+    textarea,
+    select {
+      appearance: none;
+      -webkit-appearance: none;
       width: 100%;
-      padding: 10px;
-      background: var(--bg-color);
-      border: 1px solid var(--border-color);
-      border-radius: 5px;
-      color: var(--text-color);
+      min-height: 48px;
+      padding: 8px 4px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid var(--color-grey);
+      color: var(--text-main);
+      font-family: var(--font-mono);
       font-size: 1rem;
+      transition: border-color 0.15s;
+    }
+
+    input[type="number"] {
+      -moz-appearance: textfield;
+      appearance: textfield;
+    }
+
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: var(--text-muted);
+      opacity: 0.7;
     }
 
     input[type="text"]:focus,
     input[type="number"]:focus,
-    textarea:focus {
+    textarea:focus,
+    select:focus {
       outline: none;
-      border-color: var(--highlight-color);
+      border-bottom-color: var(--theme-color);
     }
 
-    button {
-      padding: 10px 20px;
-      background: var(--highlight-color);
-      color: white;
-      border: none;
-      border-radius: 5px;
+    select {
+      background-color: var(--bg-panel-muted);
+      border: 1px solid var(--border-faint);
+      border-bottom: 2px solid var(--color-grey);
+      padding: 8px 12px;
       cursor: pointer;
-      font-size: 1rem;
     }
 
-    button:hover {
-      background: #d63850;
+    select option {
+      background-color: var(--bg-panel);
+      color: var(--text-main);
+    }
+
+    textarea.code-block {
+      min-height: 150px;
+      background: var(--bg-panel-muted);
+      border: 1px solid var(--border-faint);
+      padding: 10px;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      resize: vertical;
+    }
+
+    /* File input */
+    input[type="file"] {
+      width: 100%;
+      min-height: 48px;
+      padding: 8px 4px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid var(--color-grey);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    input[type="file"]:focus {
+      outline: none;
+      border-bottom-color: var(--theme-color);
+    }
+
+    input[type="file"]::file-selector-button {
+      appearance: none;
+      -webkit-appearance: none;
+      margin-right: 14px;
+      padding: 8px 14px;
+      min-height: 36px;
+      background: transparent;
+      border: 1px solid var(--theme-color);
+      color: var(--theme-color);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      transition: background-color 0.1s, color 0.1s;
+    }
+
+    input[type="file"]::file-selector-button:hover {
+      background-color: var(--theme-color);
+      color: var(--bg-base);
+    }
+
+    /* Toggle: sharp rectangular sliding switch */
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 48px;
+      cursor: pointer;
+      color: var(--text-main);
+      font-size: 0.9rem;
+      text-transform: none;
+      letter-spacing: normal;
+      font-weight: 400;
+    }
+
+    input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 48px;
+      height: 26px;
+      min-height: 26px;
+      flex-shrink: 0;
+      position: relative;
+      background: var(--bg-panel-muted);
+      border: 1px solid var(--color-grey);
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    input[type="checkbox"]::before {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: var(--color-grey);
+      transition: left 0.15s, background-color 0.15s;
+    }
+
+    input[type="checkbox"]:checked {
+      border-color: var(--theme-color);
+    }
+
+    input[type="checkbox"]:checked::before {
+      left: 24px;
+      background: var(--theme-color);
+    }
+
+    input[type="checkbox"]:focus-visible {
+      outline: 1px solid var(--theme-color);
+      outline-offset: 2px;
+    }
+
+    /* Buttons: transparent with theme border, invert on hover/active */
+    button,
+    .copy-btn,
+    a.btn {
+      appearance: none;
+      -webkit-appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      min-width: 48px;
+      padding: 6px 18px;
+      background: transparent;
+      border: 1px solid var(--theme-color);
+      color: var(--theme-color);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      text-decoration: none;
+      transition: background-color 0.1s, color 0.1s, border-color 0.1s;
+    }
+
+    button:hover,
+    button:active,
+    .copy-btn:hover,
+    .copy-btn:active,
+    a.btn:hover,
+    a.btn:active {
+      background-color: var(--theme-color);
+      color: var(--bg-base);
+    }
+
+    button:focus-visible,
+    .copy-btn:focus-visible,
+    a.btn:focus-visible {
+      outline: 1px solid var(--theme-color);
+      outline-offset: 2px;
     }
 
     button:disabled {
-      background: var(--border-color);
+      background: transparent;
+      border-color: var(--color-grey);
+      color: var(--color-grey);
       cursor: not-allowed;
     }
 
+    .version-selector {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .version-btn {
+      flex: 1 1 auto;
+    }
+
+    .version-btn.active {
+      background: var(--theme-color);
+      border-color: var(--theme-color);
+      color: var(--bg-base);
+    }
+
+    /* Winlink is the alternate transmission path */
+    .version-btn[data-version="winlink"] { --theme-color: var(--color-orange); --theme-color-rgb: var(--color-orange-rgb); }
+
+    /* Telemetry: stat readouts */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .stat-item {
+      background: var(--bg-panel-muted);
+      border: 1px solid var(--border-faint);
+      border-top: 2px solid var(--color-grey);
+      padding: 14px 12px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--text-main);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Themed stats carry their semantic color as a top rail + label tint */
+    .stat-item[class*="theme-"] {
+      border-top-color: var(--theme-color);
+    }
+
+    .stat-item[class*="theme-"] .stat-label {
+      color: var(--theme-color);
+    }
+
+    /* Message lists */
     .message-list {
       margin-top: 20px;
     }
@@ -137,127 +482,165 @@
     .message-item {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 10px;
-      background: var(--bg-color);
-      border-radius: 5px;
+      gap: 12px;
+      padding: 8px 12px;
+      background: var(--bg-panel-muted);
+      border: 1px solid var(--border-faint);
+      border-left: 2px solid var(--theme-color);
       margin-bottom: 10px;
+      min-height: 48px;
     }
 
     .message-number {
-      background: var(--highlight-color);
-      padding: 5px 10px;
-      border-radius: 3px;
-      font-weight: bold;
-      min-width: 50px;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--theme-color);
+      border: 1px solid currentColor;
+      padding: 4px 8px;
+      min-width: 56px;
       text-align: center;
+      flex-shrink: 0;
     }
 
     .message-content {
       flex: 1;
-      font-family: monospace;
-      font-size: 0.9rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-main);
       word-break: break-all;
-    }
-
-    .copy-btn {
-      padding: 5px 10px;
-      background: var(--accent-color);
-      font-size: 0.8rem;
-      color: white;
-      text-decoration: none;
-    }
-
-    .copy-btn:hover {
-      background: #1a4a7a;
+      white-space: pre-wrap;
     }
 
     .copy-btn.copied {
-      background: var(--success-color);
+      border-color: var(--color-green);
+      color: var(--color-green);
+    }
+
+    .copy-btn.copied:hover {
+      background: var(--color-green);
+      color: var(--bg-base);
     }
 
     .message-item.message-copied {
-      box-shadow: inset 3px 0 0 var(--success-color);
+      border-left-color: var(--color-green);
     }
 
     .message-item.message-copied .message-content {
       opacity: 0.7;
     }
 
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 15px;
-      margin-bottom: 20px;
-    }
-
-    .stat-item {
-      background: var(--bg-color);
-      padding: 15px;
-      border-radius: 5px;
-      text-align: center;
-    }
-
-    .stat-value {
-      font-size: 1.5rem;
-      font-weight: bold;
-      color: var(--highlight-color);
-    }
-
-    .stat-label {
+    /* Status messages: semantic neon panels */
+    .error,
+    .success,
+    .info {
+      padding: 12px 14px;
+      margin-bottom: 15px;
       font-size: 0.9rem;
-      color: #888;
     }
 
     .error {
-      background: #5a1a1a;
-      color: #ff6b6b;
-      padding: 10px;
-      border-radius: 5px;
-      margin-bottom: 15px;
+      background: rgba(var(--color-red-rgb), 0.12);
+      border: 1px solid rgba(var(--color-red-rgb), 0.6);
+      border-left: 2px solid var(--color-red);
+      color: var(--text-main);
+    }
+
+    .error h4,
+    .error strong {
+      color: var(--color-red);
     }
 
     .success {
-      background: #1a3a1a;
-      color: #6bff6b;
-      padding: 10px;
-      border-radius: 5px;
-      margin-bottom: 15px;
+      background: rgba(var(--color-green-rgb), 0.12);
+      border: 1px solid rgba(var(--color-green-rgb), 0.6);
+      border-left: 2px solid var(--color-green);
+      color: var(--text-main);
+    }
+
+    .success h4,
+    .success strong {
+      color: var(--color-green);
+    }
+
+    .success img {
+      max-width: 100%;
+      border: 1px solid var(--border-faint);
     }
 
     .info {
-      background: var(--accent-color);
-      padding: 10px;
-      border-radius: 5px;
-      margin-bottom: 15px;
+      background: rgba(var(--color-teal-rgb), 0.1);
+      border: 1px solid rgba(var(--color-teal-rgb), 0.5);
+      border-left: 2px solid var(--color-teal);
+      color: var(--text-main);
     }
 
-    .version-selector {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 20px;
+    .info strong {
+      color: var(--color-teal);
     }
 
-    .version-btn {
-      flex: 1;
+    .warning {
+      background: rgba(var(--color-orange-rgb), 0.12);
+      border: 1px solid rgba(var(--color-orange-rgb), 0.6);
+      border-left: 2px solid var(--color-orange);
+      color: var(--text-main);
     }
 
-    .version-btn.active {
-      background: var(--success-color);
+    .warning h4,
+    .warning strong {
+      color: var(--color-orange);
     }
 
-    textarea.code-block {
-      font-family: monospace;
+    /* Destructive controls: swap the local theme to red */
+    .danger { --theme-color: var(--color-red); --theme-color-rgb: var(--color-red-rgb); }
+
+    code {
+      font-family: var(--font-mono);
+      color: var(--theme-color);
+    }
+
+    /* Image previews */
+    .preview-item {
+      margin-bottom: 16px;
+      padding: 14px;
+      background: var(--bg-panel-muted);
+      border: 1px solid var(--border-faint);
+      border-left: 2px solid var(--theme-color);
+    }
+
+    .preview-item img {
+      max-width: 100%;
+      max-height: 200px;
+      border: 1px solid var(--color-grey);
+      margin-bottom: 10px;
+    }
+
+    .preview-title {
+      margin-bottom: 10px;
+    }
+
+    .preview-title strong {
+      color: var(--theme-color);
       font-size: 0.85rem;
-      min-height: 150px;
-      white-space: pre-wrap;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .preview-error {
+      color: var(--color-red);
+    }
+
+    .preview-meta {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
     }
 
     .chunk-input {
       display: flex;
       gap: 10px;
       align-items: flex-end;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .chunk-input input {
@@ -265,9 +648,9 @@
     }
   </style>
 </head>
-<body>
+<body class="theme-teal">
   <div class="container">
-    <h1>🌊 Offshore Blogging</h1>
+    <h1>Offshore Blogging</h1>
 
     <div class="tabs">
       <button class="tab active" data-tab="blog" type="button">Blog Post</button>
@@ -277,12 +660,12 @@
 
     <!-- Blog Post Tab -->
     <div id="blog" class="tab-content active">
-      <div class="card">
+      <div class="card theme-teal">
         <h2>Encode Blog Post for Transmission</h2>
         <div class="form-group">
           <label for="filename">Post filename (e.g., 2026-06-18 or 2026-06-18_001.md):</label>
           <input type="text" id="filename" placeholder="2026-08-08">
-          <small style="color: #888;">.md extension is optional</small>
+          <small>.md extension is optional</small>
         </div>
         <div class="form-group">
           <label for="postid">Post ID (MMDD, defaults to today):</label>
@@ -291,7 +674,7 @@
         <div class="form-group">
           <label for="imageBudget">Image message budget per image (1-99):</label>
           <input type="number" id="imageBudget" value="5" min="1" max="99">
-          <small style="color: #888;">Images are auto-detected from markdown content</small>
+          <small>Images are auto-detected from markdown content</small>
         </div>
         <button id="encodeBtn" type="button">Encode Post</button>
       </div>
@@ -299,15 +682,15 @@
       <div id="encodeResults" style="display: none;">
         <div class="card">
           <div class="stats">
-            <div class="stat-item">
+            <div class="stat-item theme-teal">
               <div class="stat-value" id="statMessages">0</div>
               <div class="stat-label">Total (text+images)</div>
             </div>
-            <div class="stat-item">
+            <div class="stat-item theme-green">
               <div class="stat-value" id="statTextMessages">0</div>
               <div class="stat-label">Text-only</div>
             </div>
-            <div class="stat-item">
+            <div class="stat-item theme-orange">
               <div class="stat-value" id="statImageMessages">0</div>
               <div class="stat-label">Image chunks</div>
             </div>
@@ -319,14 +702,14 @@
 
     <!-- Weather Request Tab -->
     <div id="weather" class="tab-content">
-      <div class="card">
+      <div class="card theme-green">
         <h2>Weather Request</h2>
         <div class="info">
           Select a preset or customize your request. Larger requests may exceed 10 messages.
         </div>
         <div class="form-group">
           <label for="weatherPreset">Presets (centered on boat position):</label>
-          <select id="weatherPreset" style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-color);">
+          <select id="weatherPreset">
             <option value="">-- Select preset --</option>
             <option value="local-wind">Local wind forecast (4 timepoints)</option>
             <option value="local-wind-pressure">Local wind + pressure (4 timepoints)</option>
@@ -337,7 +720,7 @@
           <strong>Boat position:</strong> <span id="weatherPositionText">—</span>
         </div>
         <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <label class="toggle-label" for="weatherRouteToggle">
             <input type="checkbox" id="weatherRouteToggle">
             Route to destination (cover current position, destination &amp; margin)
           </label>
@@ -345,15 +728,15 @@
         <div id="weatherRouteFields" style="display: none;">
           <div class="form-group">
             <label for="weatherDestLat">Destination latitude (°, north positive):</label>
-            <input type="number" id="weatherDestLat" step="0.0001" placeholder="e.g. 35.5" style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-color);">
+            <input type="number" id="weatherDestLat" step="0.0001" placeholder="e.g. 35.5">
           </div>
           <div class="form-group">
             <label for="weatherDestLon">Destination longitude (°, east positive):</label>
-            <input type="number" id="weatherDestLon" step="0.0001" placeholder="e.g. -70.2" style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-color);">
+            <input type="number" id="weatherDestLon" step="0.0001" placeholder="e.g. -70.2">
           </div>
           <div class="form-group">
             <label for="weatherMargin">Margin around route (degrees):</label>
-            <input type="number" id="weatherMargin" step="0.5" min="0" value="2" style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 5px; color: var(--text-color);">
+            <input type="number" id="weatherMargin" step="0.5" min="0" value="2">
           </div>
         </div>
         <div class="form-group">
@@ -366,11 +749,11 @@
       <div id="weatherResults" style="display: none;">
         <div class="card">
           <div class="stats">
-            <div class="stat-item">
+            <div class="stat-item theme-green">
               <div class="stat-value" id="weatherMessages">0</div>
               <div class="stat-label">Messages</div>
             </div>
-            <div class="stat-item">
+            <div class="stat-item theme-teal">
               <div class="stat-value" id="weatherModel">-</div>
               <div class="stat-label">Weather Model</div>
             </div>
@@ -382,7 +765,7 @@
 
     <!-- Decode GRIB Tab -->
     <div id="decode" class="tab-content">
-      <div class="card">
+      <div class="card theme-orange">
         <h2>Reassemble Messages</h2>
         <div class="info">
           Paste each received compact-header message below. The system groups chunks by transmission ID and type, then reassembles blog text/image (server-side) and GRIBs (server-side, persisted for any Signal K user to download).
@@ -395,10 +778,10 @@
           </div>
         </div>
         <button id="reassembleBtn" type="button">Reassemble</button>
-        <button id="clearChunksBtn" type="button">Clear All</button>
+        <button id="clearChunksBtn" type="button" class="danger">Clear All</button>
       </div>
 
-      <div class="card">
+      <div class="card theme-teal">
         <h2>Upload a GRIB file</h2>
         <div class="info">
           If you received a complete GRIB file via Winlink/Saildocs (for example a <code>.grb</code> attachment from <code>query@saildocs.com</code>), upload it here. It is stored alongside the InReach-assembled GRIBs so <code>signalk-grib-weather-provider</code> can ingest it and any Signal K user can download it.
@@ -412,20 +795,20 @@
       </div>
 
       <div id="chunksList" style="display: none;">
-        <div class="card">
+        <div class="card theme-orange">
           <h3>Received Chunks</h3>
           <div id="chunksDisplay"></div>
         </div>
       </div>
 
       <div id="reassembleResults" style="display: none;">
-        <div class="card">
+        <div class="card theme-orange">
           <h3>Result</h3>
           <div id="reassembleOutput"></div>
         </div>
       </div>
 
-      <div class="card">
+      <div class="card theme-green">
         <h3>Stored GRIBs (latest first)</h3>
         <div class="info">
           GRIBs assembled by any Signal K user are persisted server-side and listed here for anyone to download.
