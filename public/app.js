@@ -5,6 +5,7 @@ class OffshoreBloggingUI {
     this.currentEncodeResult = null;
     this.currentPreviews = null;
     this.chunks = [];
+    this.modeBackoff = 1000;
     // Messages the user has already copied, so we can mark them and make it
     // easier to keep track of what has been sent. Persisted in localStorage so
     // the markers survive page reloads (e.g. if the server requests a chunk
@@ -14,6 +15,7 @@ class OffshoreBloggingUI {
     this.initBlogTab();
     this.initWeatherTab();
     this.initDecodeTab();
+    this.initEnvironmentMode();
     this.checkStatus();
   }
 
@@ -215,6 +217,103 @@ class OffshoreBloggingUI {
 
     // Populate the shared, latest-first list of persisted GRIBs.
     this.loadStoredGribs();
+  }
+
+  /**
+   * Keep the day/night theme in sync with the vessel's environment mode.
+   * The stylesheet reacts to data-mode on the root <html> element (night is
+   * the hardcoded safe default for page load and for servers without the
+   * path). Plugin webapps are standalone pages, so the "host" applying the
+   * attribute is this page itself: read the initial mode via REST, then
+   * passively follow the vessels.self.environment.mode delta over a
+   * throttled WebSocket subscription (the mode flips at most a couple of
+   * times a day, so a high minRate keeps the client quiet).
+   */
+  initEnvironmentMode() {
+    // Only meaningful in a real browser (guards the vm sandbox used by the
+    // smoketests, where WebSocket/location don't exist).
+    if (typeof WebSocket === "undefined" || typeof location === "undefined") {
+      return;
+    }
+    this.fetchInitialEnvironmentMode();
+    this.connectModeStream();
+  }
+
+  /**
+   * Apply a mode value to the root element. Unknown values (null, missing
+   * path, twilight...) leave the current mode untouched.
+   */
+  applyEnvironmentMode(mode) {
+    if (mode !== "day" && mode !== "night") return;
+    document.documentElement.dataset.mode = mode;
+  }
+
+  async fetchInitialEnvironmentMode() {
+    try {
+      const response = await fetch(
+        "/signalk/v1/api/vessels/self/environment/mode",
+      );
+      if (!response.ok) return;
+      const data = await response.json();
+      this.applyEnvironmentMode((data && data.value) || data);
+    } catch {
+      // Server unreachable or path absent - keep the night default
+    }
+  }
+
+  connectModeStream() {
+    let socket;
+    try {
+      const scheme = location.protocol === "https:" ? "wss" : "ws";
+      socket = new WebSocket(
+        `${scheme}://${location.host}/signalk/v1/stream?subscribe=none`,
+      );
+    } catch {
+      this.scheduleModeReconnect();
+      return;
+    }
+    socket.addEventListener("open", () => {
+      // Connection established - reset the reconnect backoff.
+      this.modeBackoff = 1000;
+      socket.send(
+        JSON.stringify({
+          context: "vessels.self",
+          subscribe: [{ path: "environment.mode", minRate: 60000 }],
+        }),
+      );
+    });
+    socket.addEventListener("message", (event) => {
+      let delta;
+      try {
+        delta = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      for (const update of delta.updates || []) {
+        for (const value of update.values || []) {
+          if (value.path === "environment.mode") {
+            this.applyEnvironmentMode(value.value);
+          }
+        }
+      }
+    });
+    socket.addEventListener("close", () => this.scheduleModeReconnect());
+    socket.addEventListener("error", () => socket.close());
+  }
+
+  /**
+   * Reconnect with exponential backoff (1s doubling, capped at 30s) so a
+   * server restart or network dropout doesn't hammer the connection. The
+   * last applied mode simply stays in effect while offline.
+   */
+  scheduleModeReconnect() {
+    if (this.modeReconnectTimer) return;
+    const delay = this.modeBackoff;
+    this.modeBackoff = Math.min(delay * 2, 30000);
+    this.modeReconnectTimer = setTimeout(() => {
+      this.modeReconnectTimer = null;
+      this.connectModeStream();
+    }, delay);
   }
 
   // Fetch feature flags from the plugin so opt-in features (like blog

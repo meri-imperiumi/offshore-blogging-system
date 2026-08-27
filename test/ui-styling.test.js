@@ -23,22 +23,52 @@ function stylesheet(source) {
 const css = stylesheet(html);
 
 describe("Signal K tactical sci-fi styling", () => {
-  it("defines the semantic color system at :root", () => {
+  it("defines the night palette as the :root default", () => {
     const requiredVars = [
       "--bg-base: #080a0c",
       "--bg-panel: #111414",
       "--bg-panel-muted: #0a0c0c",
-      "--color-green: #6b9e78",
-      "--color-teal: #4b8b99",
-      "--color-orange: #c77b28",
-      "--color-red: #c94b4b",
-      "--color-grey: #444444",
-      "--text-main: #ffffff",
-      "--text-muted: #888899",
+      "--color-green: #4a7555",
+      "--color-teal: #33616b",
+      "--color-orange: #8a5318",
+      "--color-red: #8f3333",
+      "--color-grey: #333333",
+      "--text-main: #c4c4c4",
+      "--text-muted: #666677",
     ];
     for (const decl of requiredVars) {
       assert.ok(css.includes(decl), `missing :root variable ${decl}`);
     }
+  });
+
+  it("shifts intensity for day mode without switching to a white mode", () => {
+    const dayMatch = css.match(/:root\[data-mode="day"\]\s*\{([^}]*)\}/);
+    assert.ok(dayMatch, "stylesheet must define :root[data-mode=day]");
+    const day = dayMatch[1];
+    for (const decl of [
+      "--color-green: #8dfcbb",
+      "--color-teal: #66c6db",
+      "--color-orange: #fca847",
+      "--color-red: #ff5e5e",
+      "--color-grey: #666666",
+      "--text-main: #ffffff",
+      "--text-muted: #a0a0b5",
+    ]) {
+      assert.ok(day.includes(decl), `missing day-mode variable ${decl}`);
+    }
+    assert.ok(
+      !day.includes("--bg-"),
+      "day mode must keep the dark canvas (no white mode)",
+    );
+  });
+
+  it("explicitly defines the night mode palette", () => {
+    const nightMatch = css.match(/:root\[data-mode="night"\]\s*\{([^}]*)\}/);
+    assert.ok(nightMatch, "stylesheet must define :root[data-mode=night]");
+    assert.ok(
+      nightMatch[1].includes("--color-teal: #33616b"),
+      "night mode must use the dimmed palette",
+    );
   });
 
   it("provides theme classes that swap the local theme color", () => {
@@ -54,6 +84,16 @@ describe("Signal K tactical sci-fi styling", () => {
     assert.ok(
       css.includes("--theme-color:"),
       "theme classes must set --theme-color",
+    );
+    assert.ok(
+      css.includes("background-color: rgba(var(--theme-color-rgb), 0.05)"),
+      "theme classes must apply an ultra-faint background tint",
+    );
+    assert.ok(
+      css.includes(
+        "color-mix(in srgb, var(--bg-panel) 94%, var(--theme-color))",
+      ),
+      "themed cards must tint their panel fill",
     );
   });
 
@@ -87,6 +127,17 @@ describe("Signal K tactical sci-fi styling", () => {
     assert.match(css, /border-width:\s*2px/);
   });
 
+  it("uses theme-tinted semi-transparent panel borders", () => {
+    assert.match(
+      css,
+      /border:\s*1px\s+solid\s+rgba\(var\(--theme-color-rgb\),\s*0\.3\)/,
+    );
+    assert.ok(
+      !css.includes("--border-faint"),
+      "panel borders must derive from the local theme color",
+    );
+  });
+
   it("uses hardware-style monospace inputs with theme focus color", () => {
     assert.match(css, /appearance:\s*none/);
     assert.match(css, /border-bottom:\s*2px\s+solid\s+var\(--color-grey\)/);
@@ -96,6 +147,28 @@ describe("Signal K tactical sci-fi styling", () => {
 
   it("uses tabular numerals for telemetry values", () => {
     assert.match(css, /font-variant-numeric:\s*tabular-nums/);
+  });
+});
+
+describe("day/night reactivity", () => {
+  it("follows environment.mode instead of staying on the hardcoded default", () => {
+    assert.ok(
+      appJs.includes("vessels/self/environment/mode"),
+      "initial mode should be read from the Signal K REST API",
+    );
+    assert.ok(
+      appJs.includes('"environment.mode"'),
+      "should subscribe to the environment.mode delta",
+    );
+    assert.match(appJs, /minRate:\s*60000/, "subscription must be throttled");
+  });
+
+  it("applies the mode to the root <html> element", () => {
+    assert.match(appJs, /document\.documentElement\.dataset\.mode\s*=\s*mode/);
+  });
+
+  it("reconnects the mode stream with exponential backoff", () => {
+    assert.match(appJs, /Math\.min\(delay \* 2,\s*30000\)/);
   });
 });
 
@@ -142,6 +215,11 @@ describe("semantic color usage", () => {
   it("tabs carry their section's semantic color", () => {
     assert.ok(css.includes('.tab[data-tab="weather"]'));
     assert.ok(css.includes('.tab[data-tab="decode"]'));
+    assert.match(
+      css,
+      /\.tab::before\s*\{[^}]*color:\s*var\(--theme-color\)/,
+      "tab brackets should hint the section theme",
+    );
   });
 
   it("defines an orange warning panel for incomplete data", () => {

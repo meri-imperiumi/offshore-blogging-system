@@ -6,35 +6,69 @@
   <title>Offshore Blogging</title>
   <style>
     :root {
-      /* Canvas */
+      /* Base Canvas (constant — the hardware console stays dark in both modes) */
       --bg-base: #080a0c;
       --bg-panel: #111414;
       --bg-panel-muted: #0a0c0c;
 
-      /* Semantic themes */
-      --color-green: #6b9e78;  /* Standard / Nominal operation */
-      --color-green-rgb: 107, 158, 120;
-      --color-teal: #4b8b99;   /* Surplus / Primary active systems */
-      --color-teal-rgb: 75, 139, 153;
-      --color-orange: #c77b28; /* Warning / Degraded / Alternate power */
-      --color-orange-rgb: 199, 123, 40;
-      --color-red: #c94b4b;    /* CRITICAL / Alarm / Danger */
-      --color-red-rgb: 201, 75, 75;
-      --color-grey: #444444;   /* Offline / Inactive */
-      --color-grey-rgb: 68, 68, 68;
+      /* Night palette: dimmed to protect rhodopsin. Safe default. */
+      --color-green: #4a7555;  /* Standard / Nominal operation */
+      --color-green-rgb: 74, 117, 85;
+      --color-teal: #33616b;   /* Surplus / Primary active systems */
+      --color-teal-rgb: 51, 97, 107;
+      --color-orange: #8a5318; /* Warning / Degraded / Alternate power */
+      --color-orange-rgb: 138, 83, 24;
+      --color-red: #8f3333;    /* CRITICAL / Alarm / Danger */
+      --color-red-rgb: 143, 51, 51;
+      --color-grey: #333333;   /* Offline / Inactive */
+      --color-grey-rgb: 51, 51, 51;
 
       /* Typography */
-      --text-main: #ffffff;
-      --text-muted: #888899;
+      --text-main: #c4c4c4;
+      --text-muted: #666677;
       --font-ui: system-ui, -apple-system, sans-serif;
       --font-mono: ui-monospace, 'Fira Code', monospace;
 
       /* Active theme (teal: primary active system) */
       --theme-color: var(--color-teal);
       --theme-color-rgb: var(--color-teal-rgb);
+    }
 
-      /* Panel framing */
-      --border-faint: rgba(255, 255, 255, 0.3);
+    /* Day mode: brightness & saturation up to fight glare — the canvas stays
+       dark ("no white mode"). app.js follows the
+       vessels.self.environment.mode delta and sets data-mode on <html>;
+       night is the hardcoded safe default. */
+    :root[data-mode="day"] {
+      --color-green: #8dfcbb;
+      --color-green-rgb: 141, 252, 187;
+      --color-teal: #66c6db;
+      --color-teal-rgb: 102, 198, 219;
+      --color-orange: #fca847;
+      --color-orange-rgb: 252, 168, 71;
+      --color-red: #ff5e5e;
+      --color-red-rgb: 255, 94, 94;
+      --color-grey: #666666;
+      --color-grey-rgb: 102, 102, 102;
+
+      --text-main: #ffffff;
+      --text-muted: #a0a0b5;
+    }
+
+    /* Night mode: explicit, mirrors the :root default */
+    :root[data-mode="night"] {
+      --color-green: #4a7555;
+      --color-green-rgb: 74, 117, 85;
+      --color-teal: #33616b;
+      --color-teal-rgb: 51, 97, 107;
+      --color-orange: #8a5318;
+      --color-orange-rgb: 138, 83, 24;
+      --color-red: #8f3333;
+      --color-red-rgb: 143, 51, 51;
+      --color-grey: #333333;
+      --color-grey-rgb: 51, 51, 51;
+
+      --text-main: #c4c4c4;
+      --text-muted: #666677;
     }
 
     /* Theme classes swap the local semantic color */
@@ -43,17 +77,6 @@
     .theme-orange { --theme-color: var(--color-orange); --theme-color-rgb: var(--color-orange-rgb); }
     .theme-red    { --theme-color: var(--color-red);    --theme-color-rgb: var(--color-red-rgb); }
     .theme-offline { --theme-color: var(--color-grey);  --theme-color-rgb: var(--color-grey-rgb); }
-
-    /* Day mode overrides: the host Signal K app applies data-mode to <html>
-       based on vessels.self.environment.mode. Night is the default. */
-    html[data-mode="day"] {
-      --bg-base: #b6bbb7;
-      --bg-panel: #dfe4e0;
-      --bg-panel-muted: #cfd4cf;
-      --text-main: #0a0c0c;
-      --text-muted: #4e5359;
-      --border-faint: rgba(0, 0, 0, 0.3);
-    }
 
     * {
       box-sizing: border-box;
@@ -111,7 +134,7 @@
     .card {
       position: relative;
       background: var(--bg-panel);
-      border: 1px solid var(--border-faint);
+      border: 1px solid rgba(var(--theme-color-rgb), 0.3);
       padding: clamp(16px, 3vw, 24px);
       margin-bottom: 20px;
     }
@@ -138,6 +161,15 @@
       border-width: 0 2px 2px 0;
     }
 
+    /* Themed cards get an ultra-faint tint of their color in the panel fill */
+    .card.theme-green,
+    .card.theme-teal,
+    .card.theme-orange,
+    .card.theme-red,
+    .card.theme-offline {
+      background-color: color-mix(in srgb, var(--bg-panel) 94%, var(--theme-color));
+    }
+
     /* Tabs: bracketed toggle buttons */
     .tabs {
       display: flex;
@@ -145,7 +177,7 @@
       gap: 8px;
       margin-bottom: 20px;
       padding-bottom: 12px;
-      border-bottom: 1px solid var(--border-faint);
+      border-bottom: 1px solid rgba(var(--theme-color-rgb), 0.3);
     }
 
     .tab {
@@ -160,8 +192,9 @@
     .tab[data-tab="weather"] { --theme-color: var(--color-green);  --theme-color-rgb: var(--color-green-rgb); }
     .tab[data-tab="decode"]  { --theme-color: var(--color-orange); --theme-color-rgb: var(--color-orange-rgb); }
 
-    .tab::before { content: "["; margin-right: 8px; }
-    .tab::after { content: "]"; margin-left: 8px; }
+    /* Brackets carry the section's semantic color, hinting the target area */
+    .tab::before { content: "["; margin-right: 8px; color: var(--theme-color); }
+    .tab::after { content: "]"; margin-left: 8px; color: var(--theme-color); }
 
     .tab:hover {
       background: transparent;
@@ -172,6 +205,12 @@
     .tab.active {
       background: var(--theme-color);
       border-color: var(--theme-color);
+      color: var(--bg-base);
+    }
+
+    /* Inverted brackets stay readable on the filled active tab */
+    .tab.active::before,
+    .tab.active::after {
       color: var(--bg-base);
     }
 
@@ -248,7 +287,7 @@
 
     select {
       background-color: var(--bg-panel-muted);
-      border: 1px solid var(--border-faint);
+      border: 1px solid rgba(var(--theme-color-rgb), 0.3);
       border-bottom: 2px solid var(--color-grey);
       padding: 8px 12px;
       cursor: pointer;
@@ -262,7 +301,7 @@
     textarea.code-block {
       min-height: 150px;
       background: var(--bg-panel-muted);
-      border: 1px solid var(--border-faint);
+      border: 1px solid rgba(var(--theme-color-rgb), 0.3);
       padding: 10px;
       font-size: 0.85rem;
       white-space: pre-wrap;
@@ -442,7 +481,7 @@
 
     .stat-item {
       background: var(--bg-panel-muted);
-      border: 1px solid var(--border-faint);
+      border: 1px solid rgba(var(--theme-color-rgb), 0.3);
       border-top: 2px solid var(--color-grey);
       padding: 14px 12px;
       text-align: center;
@@ -485,7 +524,7 @@
       gap: 12px;
       padding: 8px 12px;
       background: var(--bg-panel-muted);
-      border: 1px solid var(--border-faint);
+      border: 1px solid rgba(var(--theme-color-rgb), 0.3);
       border-left: 2px solid var(--theme-color);
       margin-bottom: 10px;
       min-height: 48px;
@@ -565,7 +604,7 @@
 
     .success img {
       max-width: 100%;
-      border: 1px solid var(--border-faint);
+      border: 1px solid rgba(var(--theme-color-rgb), 0.3);
     }
 
     .info {
@@ -604,7 +643,7 @@
       margin-bottom: 16px;
       padding: 14px;
       background: var(--bg-panel-muted);
-      border: 1px solid var(--border-faint);
+      border: 1px solid rgba(var(--theme-color-rgb), 0.3);
       border-left: 2px solid var(--theme-color);
     }
 
@@ -646,9 +685,18 @@
     .chunk-input input {
       flex: 1;
     }
+
+    /* Theme classes apply an ultra-faint background tint of their color */
+    .theme-green,
+    .theme-teal,
+    .theme-orange,
+    .theme-red,
+    .theme-offline {
+      background-color: rgba(var(--theme-color-rgb), 0.05);
+    }
   </style>
 </head>
-<body class="theme-teal">
+<body>
   <div class="container">
     <h1>Offshore Blogging</h1>
 
