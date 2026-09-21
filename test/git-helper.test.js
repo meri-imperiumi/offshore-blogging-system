@@ -193,6 +193,12 @@ describe("GitHelper.push / pull round-trip", () => {
     const bareDir = await fsp.mkdtemp(path.join(os.tmpdir(), "obs-gh-bare-"));
     dirs.push(bareDir);
     await runGit(["init", "--bare", bareDir]);
+    // A bare `git init` leaves HEAD at the host default (master on runners
+    // where init.defaultBranch is unset). Pushing `main` then succeeds, but
+    // a plain `git clone` follows the remote's HEAD, finds no master ref,
+    // and leaves the work tree empty ("remote HEAD refers to nonexistent
+    // ref"). Point HEAD at the branch we actually push.
+    await runGit(["symbolic-ref", "HEAD", "refs/heads/main"], bareDir);
     await main.git.exec("remote", "add", "origin", bareDir);
     await main.git.push("origin", "main");
 

@@ -340,6 +340,13 @@ describe("GitPublisher", () => {
   });
 
   it("rejects a path-traversal filename (transmitted data is untrusted)", async () => {
+    // Use a repo nested under tmpDir (two levels, so three `../` from
+    // _logs/ — one above the repo — lands back inside tmpDir). Testing
+    // against a repo at tmpDir itself would make the traversal resolve to
+    // the real /etc/passwd on CI hosts, where os.tmpdir() is /tmp — that
+    // file exists on every Linux/macOS machine, so the "nothing was
+    // written" check would fail no matter how the guard behaved.
+    const repoDir = path.join(tmpDir, "traversal", "repo");
     const component = getComponent();
     const msg = {
       errors: [],
@@ -353,13 +360,18 @@ describe("GitPublisher", () => {
         imageCount: 0,
       },
     };
-    const out = await runPublish(component, msg, { repo_path: tmpDir });
+    const out = await runPublish(component, msg, { repo_path: repoDir });
     assert.ok(out, "should emit the failed message");
     assert.ok(out.errors.length > 0, "should have errors");
     assert.match(out.errors[0].message, /Unsafe filename/);
-    // Ensure nothing was written outside _logs/.
+    // Ensure nothing was written at the traversed target.
+    const traversedTarget = path.resolve(
+      repoDir,
+      "_logs",
+      "../../../etc/passwd",
+    );
     assert.ok(
-      !fs.existsSync(path.join(tmpDir, "..", "..", "..", "etc", "passwd")),
+      !fs.existsSync(traversedTarget),
       "should not have written to a traversed path",
     );
   });
