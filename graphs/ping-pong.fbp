@@ -39,8 +39,8 @@ Verifier OUT -> IN PongHandler(PongHandler)
 PongHandler OUT -> IN InReachSender(InReachSender)
 
 # 5. InReach Sender Configuration
-'cloud@boat.example.com' -> REPLY_ADDRESS InReachSender
-'5000' -> DELAY_MS InReachSender
+'cloud@boat.example.com' -> REPLYADDRESS InReachSender
+'5000' -> DELAYMS InReachSender
 
 # 6. Mark email as seen after PONG is sent
 InReachSender OUT -> IN Acker
