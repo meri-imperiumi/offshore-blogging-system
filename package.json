@@ -24,7 +24,7 @@
   "author": "Henri Bergius <henri.bergius@iki.fi>",
   "license": "EUPL-1.2",
   "signalk": {
-    "appIcon": "./icon.png",
+    "appIcon": "./icon-256.png",
     "displayName": "Offshore Blogging",
     "screenshots": [
       "./doc/weather-request.jpg",
