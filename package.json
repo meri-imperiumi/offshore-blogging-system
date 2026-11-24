@@ -35,8 +35,8 @@
     ]
   },
   "dependencies": {
-    "@reticulum/core": "^0.9.0",
-    "@reticulum/dacar": "^1.4.1",
+    "@reticulum/core": "^0.10.0",
+    "@reticulum/dacar": "^1.7.0",
     "imapflow": "^1.6.6",
     "noflo": "^1.5.2",
     "noflo-assembly": "^0.3.1",
