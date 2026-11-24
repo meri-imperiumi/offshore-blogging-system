@@ -1,8 +1,8 @@
 // Tests for image detection from markdown
 
-const { describe, it } = require("node:test");
-const assert = require("node:assert");
-const { findImagesFromMarkdown } = require("../plugin/index.js");
+import assert from "node:assert";
+import { describe, it } from "node:test";
+import { findImagesFromMarkdown } from "../plugin/index.js";
 
 describe("findImagesFromMarkdown", () => {
   it("should find no images in text without images", () => {

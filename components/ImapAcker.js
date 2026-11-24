@@ -1,5 +1,5 @@
-const { Component, failed } = require("noflo-assembly");
-const { ImapFlow } = require("imapflow");
+import { Component, failed } from "@noflo/assembly";
+import { ImapFlow } from "imapflow";
 
 /**
  * ImapAcker - Marks emails as seen after the pipeline has processed them.
@@ -108,7 +108,7 @@ class ImapAcker extends Component {
     return client;
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Read config from control ports (buffered from IIPs)
     if (input.hasData("host")) {
       this.imapConfig.host = input.getData("host");
@@ -224,4 +224,4 @@ class ImapAcker extends Component {
   }
 }
 
-exports.getComponent = () => new ImapAcker();
+export const getComponent = () => new ImapAcker();

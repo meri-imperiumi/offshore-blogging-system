@@ -4,16 +4,16 @@
 // below uses real temp git repos to exercise the stage→commit→push path and
 // idempotent re-publish.
 
-const { describe, it, before, after } = require("node:test");
-const assert = require("node:assert");
-const fs = require("node:fs");
-const fsp = require("node:fs").promises;
-const path = require("node:path");
-const os = require("node:os");
-const { execFile } = require("node:child_process");
-const { getComponent } = require("../components/GitPublisher.js");
-const GitHelper = require("../lib/GitHelper.js");
-const sharp = require("sharp");
+import assert from "node:assert";
+import { execFile } from "node:child_process";
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { after, before, describe, it } from "node:test";
+import sharp from "sharp";
+import { getComponent } from "../components/GitPublisher.js";
+import GitHelper from "../lib/GitHelper.js";
 
 let tmpDir;
 

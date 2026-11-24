@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 describe("ReplyDispatcher component", () => {
   it("routes winlink channel to SMTP port", async () => {
@@ -20,13 +20,14 @@ describe("ReplyDispatcher component", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.smtp.on("data", (data) => {
+      onData(t.outs.smtp, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.smtp.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.smtp, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data");
@@ -65,13 +66,14 @@ describe("ReplyDispatcher component", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.inreach.on("data", (data) => {
+      onData(t.outs.inreach, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.inreach.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.inreach, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data");
@@ -109,13 +111,14 @@ describe("ReplyDispatcher component", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.smtp.on("data", (data) => {
+      onData(t.outs.smtp, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.smtp.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.smtp, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data");
@@ -157,13 +160,14 @@ describe("ReplyDispatcher component", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.smtp.on("data", (data) => {
+      onData(t.outs.smtp, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.smtp.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.smtp, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data");
@@ -207,13 +211,14 @@ describe("ReplyDispatcher component", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.smtp.on("data", (data) => {
+      onData(t.outs.smtp, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.smtp.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.smtp, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data");
@@ -253,13 +258,14 @@ describe("ReplyDispatcher component", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.inreach.on("data", (data) => {
+      onData(t.outs.inreach, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.inreach.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.inreach, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data");

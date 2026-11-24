@@ -1,7 +1,7 @@
 // Shared harness for cloud-server.fbp graph-level integration tests.
 //
-// Each test FILE runs in its own process (node --test isolates files), and
-// each file builds ONE network. noflo's `network.stop()` does not reliably
+// Each test FILE runs its own process (node --test isolates files), and
+// each file builds ONE network. NoFlo's `network.stop()` does not reliably
 // resolve mid-suite for this graph, so we never stop-and-restart within a
 // single file — one network per file, stopped best-effort in `after`.
 //
@@ -9,15 +9,16 @@
 // for real, but its `dacar check` subprocess is replaced with an in-process
 // fake so the test needs no `dacar` binary or on-disk store.
 
-const assert = require("node:assert");
-const fsp = require("node:fs").promises;
-const path = require("node:path");
-const os = require("node:os");
-const noflo = require("noflo");
-const { Component } = require("noflo-assembly");
+import assert from "node:assert";
+import fsp from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { Component } from "@noflo/assembly";
+import { createNodeModulesRegistry, loadGraphFile } from "@noflo/loader-node";
+import { createNetwork, IP } from "@noflo/noflo";
 
 const GRAPH_PATH = path.join(
-  __dirname,
+  import.meta.dirname,
   "..",
   "..",
   "graphs",
@@ -74,14 +75,14 @@ async function teardownEnv(ctx) {
   await fsp.rm(ctx.tmpRoot, { recursive: true, force: true });
 }
 
-// --- Mock components (noflo-assembly Components) for external boundaries ---
+// --- Mock components (@noflo/assembly Components) for external boundaries ---
 
 class CapturingMock extends Component {
   constructor(spec) {
     super(spec);
     this.received = [];
   }
-  handle(input, output) {
+  processMessage(input, output) {
     if (!input.hasData("in")) return;
     const msg = input.getData("in");
     this.received.push(msg);
@@ -182,17 +183,24 @@ class MockInReachSender extends CapturingMock {
 }
 
 // Lower a RunInterval node's INTERVAL IIP so the timer fires quickly.
+// Graph entities are frozen in NoFlo 2.x, so the IIP is replaced rather
+// than mutated in place.
 function lowerInterval(graph, nodeName, ms) {
-  for (const iip of graph.initializers) {
-    if (
-      iip.to.node === nodeName &&
-      String(iip.to.port).toLowerCase() === "interval"
-    ) {
-      iip.data = ms;
-      return true;
-    }
-  }
-  return false;
+  const target = graph
+    .iips()
+    .find(
+      (iip) =>
+        iip.to.node === nodeName &&
+        String(iip.to.port).toLowerCase() === "interval",
+    );
+  if (!target) return false;
+  graph.removeIIP(target.entity_id);
+  graph.addIIP({
+    entity_id: target.entity_id,
+    to: { node: target.to.node, port: target.to.port },
+    data: ms,
+  });
+  return true;
 }
 
 function sleep(ms) {
@@ -208,19 +216,25 @@ function sleep(ms) {
  * one fetch cycle. Call it after queueing the inbound email on mocks.imap.
  */
 async function setupGraph() {
-  const graph = await noflo.graph.loadFile(GRAPH_PATH);
+  const graph = await loadGraphFile(GRAPH_PATH);
   assert.ok(
     lowerInterval(graph, "PollTimer", 15),
     "PollTimer INTERVAL IIP should exist",
   );
 
-  const network = await noflo.createNetwork(graph, {
-    subscribeGraph: false,
+  const registry = await createNodeModulesRegistry(
+    path.resolve(import.meta.dirname, "..", ".."),
+  );
+  await registry.discover();
+
+  const network = await createNetwork(graph, {
+    registry,
     delay: true,
   });
 
   const errors = [];
-  network.on("process-error", (err) => {
+  network.addEventListener("process-error", (event) => {
+    const err = event.detail;
     errors.push(`${err.id}: ${err.error?.message}`);
   });
 
@@ -272,7 +286,7 @@ async function setupGraph() {
     if (listener && listener.component && listener.component.inPorts.in) {
       const port = listener.component.inPorts.in;
       const socket = Object.values(port.sockets)[0];
-      if (socket) socket.post(new noflo.IP("data", true));
+      if (socket) socket.post(new IP("data", true));
     }
   };
 
@@ -310,16 +324,15 @@ async function waitForReceived(mock, count, timeout = 5000) {
   }
 }
 
-module.exports = {
-  GRAPH_PATH,
-  TEST_IDENTITY_HASH,
+export {
   ENV_KEYS,
-  setupEnv,
-  teardownEnv,
-  setupGraph,
-  stopGraph,
+  GRAPH_PATH,
   makeEmail,
-  waitForReceived,
-  lowerInterval,
+  setupEnv,
+  setupGraph,
   sleep,
+  stopGraph,
+  TEST_IDENTITY_HASH,
+  teardownEnv,
+  waitForReceived,
 };

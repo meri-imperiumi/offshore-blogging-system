@@ -1,8 +1,8 @@
 // Tests for extractPostidFromFilename
 
-const { describe, it } = require("node:test");
-const assert = require("node:assert");
-const { extractPostidFromFilename } = require("../plugin/index.js");
+import assert from "node:assert";
+import { describe, it } from "node:test";
+import { extractPostidFromFilename } from "../plugin/index.js";
 
 describe("extractPostidFromFilename", () => {
   it("should extract MMDD from simple date filename", () => {

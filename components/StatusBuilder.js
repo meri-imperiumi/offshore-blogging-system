@@ -1,5 +1,5 @@
-const { Component, failed } = require("noflo-assembly");
-const DatabaseHelper = require("../lib/DbHelper");
+import { Component, failed } from "@noflo/assembly";
+import DatabaseHelper from "../lib/DbHelper.js";
 
 // Injectable database factory so tests can supply a pre-populated in-memory DB
 // and assert what STATUS reports. Production uses the real DbHelper.
@@ -81,7 +81,7 @@ class StatusBuilder extends Component {
     this.dbPath = ":memory:";
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Process control ports
     if (input.hasData("dbpath")) {
       this.dbPath = input.getData("dbpath");
@@ -163,5 +163,5 @@ class StatusBuilder extends Component {
   }
 }
 
-exports.getComponent = () => new StatusBuilder();
-exports.di = di;
+export const getComponent = () => new StatusBuilder();
+export { di };

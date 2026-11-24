@@ -1,5 +1,19 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert");
+import assert from "node:assert";
+import fs from "node:fs";
+import path from "node:path";
+import { describe, it } from "node:test";
+import vm from "node:vm";
+
+// public/ ships browser-facing UMD files; with the package ESM they no
+// longer export via require(). Load the source in a vm sandbox like the
+// other public/ file tests and grab the SaildocsArea object.
+const source = fs.readFileSync(
+  path.join(import.meta.dirname, "..", "public", "saildocs-area.js"),
+  "utf8",
+);
+const sandbox = { module: { exports: {} }, window: undefined };
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
 const {
   PRESETS,
   formatLat,
@@ -8,7 +22,7 @@ const {
   buildRequest,
   buildRouteArea,
   buildRouteRequest,
-} = require("../public/saildocs-area.js");
+} = sandbox.module.exports;
 
 describe("SaildocsArea", () => {
   describe("formatLat", () => {

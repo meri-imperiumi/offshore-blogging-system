@@ -1,11 +1,8 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
-import { fail } from "noflo-assembly";
-
-const require = createRequire(import.meta.url);
-const { InReachError } = require("../lib/InReachClient.js");
-const { renderAlert } = require("../components/AlertComposer.js");
+import { fail } from "@noflo/assembly";
+import { renderAlert } from "../components/AlertComposer.js";
+import { InReachError } from "../lib/InReachClient.js";
 
 /** Create an error with a specific code (mimics what DacarAuthorizer.deny does) */
 function authError(message) {

@@ -1,10 +1,7 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
-
-const require = createRequire(import.meta.url);
-const fetcherModule = require("../components/GribFetcher.js");
+import * as fetcherModule from "../components/GribFetcher.js";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 // Run a GribFetcher scenario, collecting the first IP emitted on `port`.
 // Resolves {data, collected} on emission, or {data: null, collected} on
@@ -23,7 +20,7 @@ function runScenario({ msg, controls = {}, port = "outbox", timeout = 1500 }) {
     const collected = {};
     t.start()
       .then(() => {
-        t.outs[port].on("data", (data) => {
+        onData(t.outs[port], (data) => {
           collected[port] = data;
           finish(() => resolve({ data, collected }));
         });

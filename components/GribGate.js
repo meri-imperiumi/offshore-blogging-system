@@ -1,5 +1,5 @@
-const { Component, failed, fail, fork } = require("noflo-assembly");
-const DatabaseHelper = require("../lib/DbHelper");
+import { Component, fail, failed, fork } from "@noflo/assembly";
+import DatabaseHelper from "../lib/DbHelper.js";
 
 /**
  * GribGate - Size consent mechanism for GRIB payloads
@@ -36,7 +36,6 @@ class GribGate extends Component {
             "the previous 10×140 threshold.",
           control: true,
           required: false,
-          default: 15,
         },
         dbpath: {
           datatype: "string",
@@ -63,7 +62,7 @@ class GribGate extends Component {
     this.gateCounter = 0;
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Process control ports
     if (input.hasData("max_chunks")) {
       this.maxChunks = input.getData("max_chunks");
@@ -135,7 +134,7 @@ class GribGate extends Component {
   }
 
   handleCommand(cmdMsg, output) {
-    // See handle(): GribGate has >1 out port, so use an explicit port map.
+    // See processMessage(): GribGate has >1 out port, so use an explicit port map.
     if (failed(cmdMsg)) {
       return output.sendDone({ out: cmdMsg });
     }
@@ -199,4 +198,4 @@ class GribGate extends Component {
   }
 }
 
-exports.getComponent = () => new GribGate();
+export const getComponent = () => new GribGate();

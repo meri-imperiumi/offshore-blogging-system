@@ -1,4 +1,4 @@
-const { Component, failed } = require("noflo-assembly");
+import { Component, failed } from "@noflo/assembly";
 
 /**
  * AlertComposer - Out-of-band operator alert for unrecoverable failures.
@@ -106,7 +106,6 @@ class AlertComposer extends Component {
             "Min interval between alerts of the same code, in ms (default: 3600000 = 1h)",
           control: true,
           required: false,
-          default: 3600000,
         },
       },
       outPorts: {
@@ -124,7 +123,7 @@ class AlertComposer extends Component {
     this.lastAlert = {};
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Process control ports
     if (input.hasData("alertaddress")) {
       this.alertAddress = input.getData("alertaddress");
@@ -268,5 +267,5 @@ function renderAlert(code, err, msg) {
   return lines.join("\n");
 }
 
-exports.getComponent = () => new AlertComposer();
-exports.renderAlert = renderAlert;
+export const getComponent = () => new AlertComposer();
+export { renderAlert };

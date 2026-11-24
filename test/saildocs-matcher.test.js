@@ -1,12 +1,9 @@
 import assert from "node:assert";
 import { rmSync } from "node:fs";
-import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
+import * as _matcherModule from "../components/SaildocsMatcher.js";
 import DatabaseHelper from "../lib/DbHelper.js";
-
-const require = createRequire(import.meta.url);
-const _matcherModule = require("../components/SaildocsMatcher.js");
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 const DB_PATH = "/tmp/saildocs-matcher-test.db";
 
@@ -39,7 +36,7 @@ function runScenario({
     const collected = {};
     t.start()
       .then(() => {
-        t.outs[port].on("data", (data) => {
+        onData(t.outs[port], (data) => {
           collected[port] = data;
           finish(() => resolve({ data, collected }));
         });

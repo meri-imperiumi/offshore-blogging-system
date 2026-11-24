@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 describe("ParserRouter component", () => {
   it("routes BLOG intent to OUT[0]", async () => {
@@ -25,13 +25,14 @@ describe("ParserRouter component", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.out.on("data", (data) => {
+      onData(t.outs.out, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.out.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.out, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data");
@@ -81,13 +82,14 @@ describe("ParserRouter component", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.missed.on("data", (data) => {
+      onData(t.outs.missed, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.missed.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.missed, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data");
@@ -131,13 +133,14 @@ describe("ParserRouter component", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.error.on("data", (data) => {
+      onData(t.outs.error, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.error.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.error, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data");

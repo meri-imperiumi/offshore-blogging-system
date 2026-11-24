@@ -1,10 +1,7 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
-
-const require = createRequire(import.meta.url);
-const smtpModule = require("../components/SmtpResponder.js");
+import * as smtpModule from "../components/SmtpResponder.js";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 describe("SmtpResponder noflo-assembly pattern (no error port)", () => {
   it("sends failed message on OUT when recipient is missing", async () => {
@@ -24,13 +21,14 @@ describe("SmtpResponder noflo-assembly pattern (no error port)", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.out.on("data", (data) => {
+      onData(t.outs.out, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.out.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.out, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data on OUT");

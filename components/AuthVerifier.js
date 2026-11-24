@@ -1,6 +1,6 @@
-const { Component, fail } = require("noflo-assembly");
-const { Identity, toHex, fromHex } = require("@reticulum/core");
-const DatabaseHelper = require("../lib/DbHelper");
+import { Component, fail } from "@noflo/assembly";
+import { fromHex, Identity, toHex } from "@reticulum/core";
+import DatabaseHelper from "../lib/DbHelper.js";
 
 /**
  * AuthVerifier - Detects transport type and maps sender to Reticulum Identity Hash
@@ -47,7 +47,7 @@ class AuthVerifier extends Component {
     this.dbPath = ":memory:";
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Read the DB path control port (buffered from an IIP). The DB itself is
     // created lazily in lookupInReachDevice(), so Saildocs/Winlink messages
     // (which never look up a device) don't pay for a connection.
@@ -423,4 +423,4 @@ class AuthVerifier extends Component {
   }
 }
 
-exports.getComponent = () => new AuthVerifier();
+export const getComponent = () => new AuthVerifier();

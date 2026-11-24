@@ -1,12 +1,11 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
 
 // lib/InReachClient.js is CommonJS (required by the NoFlo components). Load it
 // via createRequire so we get the real CJS exports including the InReachError
 // class (named ESM imports from CJS don't always surface class exports).
-const require = createRequire(import.meta.url);
-const InReachClient = require("../lib/InReachClient.js");
+import InReachClient from "../lib/InReachClient.js";
+
 const { InReachError } = InReachClient;
 
 const REPLY_URL =

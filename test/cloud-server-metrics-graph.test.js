@@ -7,38 +7,49 @@
 // METRIC IIP, so an accidental graph edit can't silently disconnect a
 // counter. Loads the .fbp as a graph object — no network is started.
 
-const { describe, it, before } = require("node:test");
-const assert = require("node:assert");
-const path = require("node:path");
-const noflo = require("noflo");
+import assert from "node:assert";
+import path from "node:path";
+import { before, describe, it } from "node:test";
+import { loadGraphFile } from "@noflo/loader-node";
+import * as noflo from "@noflo/noflo";
 
-const GRAPH_PATH = path.join(__dirname, "..", "graphs", "cloud-server.fbp");
+const GRAPH_PATH = path.join(
+  import.meta.dirname,
+  "..",
+  "graphs",
+  "cloud-server.fbp",
+);
 
 let graph;
 
 before(async () => {
-  graph = await noflo.graph.loadFile(GRAPH_PATH);
+  graph = await loadGraphFile(GRAPH_PATH);
   assert.ok(graph, "cloud-server.fbp should load");
 });
 
 function hasEdge(fromNode, fromPort, toNode, toPort) {
-  return graph.edges.some(
-    (e) =>
-      e.from.node === fromNode &&
-      e.from.port === fromPort &&
-      e.to.node === toNode &&
-      e.to.port === toPort,
-  );
+  return graph
+    .edges()
+    .some(
+      (e) =>
+        e.from.node === fromNode &&
+        e.from.port === fromPort &&
+        e.to.node === toNode &&
+        e.to.port === toPort,
+    );
 }
 
 function hasIIP(data, toNode, toPort) {
-  return graph.initializers.some(
-    (i) => i.from.data === data && i.to.node === toNode && i.to.port === toPort,
-  );
+  return graph
+    .iips()
+    .some(
+      (i) =>
+        i.from.data === data && i.to.node === toNode && i.to.port === toPort,
+    );
 }
 
 function componentOf(nodeName) {
-  const n = graph.nodes.find((nd) => nd.id === nodeName);
+  const n = graph.nodes().find((nd) => nd.entity_id === nodeName);
   return n ? n.component : null;
 }
 

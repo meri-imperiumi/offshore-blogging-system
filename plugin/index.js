@@ -5,16 +5,17 @@
  * via low-bandwidth satellite systems (InReach, Winlink).
  */
 
-const sharp = require("sharp");
-const fs = require("node:fs").promises;
-const path = require("node:path");
-const { toHex, fromHex, Identity } = require("@reticulum/core");
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fromHex, Identity, toHex } from "@reticulum/core";
+import sharp from "sharp";
 
 // Core blog codec logic lives in lib/BlogCodec.js so it can be shared
 // between this plugin (encode) and the NoFlo cloud pipeline (decode).
-const BlogCodec = require("../lib/BlogCodec.js");
+import * as BlogCodec from "../lib/BlogCodec.js";
 // Server-side GRIB assembly & persistence (decode/download path).
-const { GribStore } = require("../lib/GribStore.js");
+import { GribStore } from "../lib/GribStore.js";
+
 const {
   DATA_BUDGET,
   SAIL_DICT,
@@ -492,9 +493,6 @@ async function signForWinlink(
     throw new Error("No identity provided for signing");
   }
 
-  const { toHex } = require("@reticulum/core");
-
-  // Get identity hash (SHA-256 truncated to 16 bytes, hex-encoded)
   const identityHashHex = toHex(identity.identityHash);
 
   // Normalize date to ISO format (YYYY-MM-DD) for Jekyll front matter
@@ -540,7 +538,7 @@ async function signForWinlink(
   };
 }
 
-module.exports = (app) => {
+export default (app) => {
   const plugin = {};
 
   plugin.id = "signalk-offshore-blogging";
@@ -1117,16 +1115,18 @@ module.exports = (app) => {
   return plugin;
 };
 
-// Export utility functions for testing
-module.exports.calculateCRC16 = calculateCRC16;
-module.exports.parseFrontMatter = parseFrontMatter;
-module.exports.compressText = compressText;
-module.exports.decompressText = decompressText;
-module.exports.chunkData = chunkData;
-module.exports.reassembleChunks = reassembleChunks;
-module.exports.findImagesFromMarkdown = findImagesFromMarkdown;
-module.exports.stripImageMarkdown = stripImageMarkdown;
-module.exports.encodeBlogPost = encodeBlogPost;
-module.exports.getTodayPostid = getTodayPostid;
-module.exports.extractPostidFromFilename = extractPostidFromFilename;
-module.exports.SAIL_DICT = SAIL_DICT;
+// Named exports for testing
+export {
+  calculateCRC16,
+  chunkData,
+  compressText,
+  decompressText,
+  encodeBlogPost,
+  extractPostidFromFilename,
+  findImagesFromMarkdown,
+  getTodayPostid,
+  parseFrontMatter,
+  reassembleChunks,
+  SAIL_DICT,
+  stripImageMarkdown,
+};

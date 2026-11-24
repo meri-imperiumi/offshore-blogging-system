@@ -1,16 +1,16 @@
 // Integration tests for encodeBlogPost text/image variant splitting
 
-const { describe, it, before, after } = require("node:test");
-const assert = require("node:assert");
-const fs = require("node:fs").promises;
-const path = require("node:path");
-const os = require("node:os");
-const {
+import assert from "node:assert";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { after, before, describe, it } from "node:test";
+import {
+  decompressText,
   encodeBlogPost,
   reassembleChunks,
-  decompressText,
   SAIL_DICT,
-} = require("../plugin/index.js");
+} from "../plugin/index.js";
 
 const POST = `---
 title: Day at Sea

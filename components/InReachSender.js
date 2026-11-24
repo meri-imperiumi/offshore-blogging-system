@@ -1,5 +1,5 @@
-const { Component, fail, fork } = require("noflo-assembly");
-const InReachClient = require("../lib/InReachClient");
+import { Component, fail, fork } from "@noflo/assembly";
+import InReachClient from "../lib/InReachClient.js";
 
 /**
  * InReachSender - Sends chunked payloads via the Garmin InReach web endpoint.
@@ -70,7 +70,6 @@ class InReachSender extends Component {
             "Delay between chunks in milliseconds (default: 5000, matching the references)",
           control: true,
           required: false,
-          default: 5000,
         },
       },
       outPorts: {
@@ -117,7 +116,7 @@ class InReachSender extends Component {
     });
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Process control ports
     if (input.hasData("replyaddress")) {
       this.replyAddress = input.getData("replyaddress");
@@ -252,5 +251,5 @@ class InReachSender extends Component {
   }
 }
 
-exports.getComponent = () => new InReachSender();
-exports.di = di;
+export const getComponent = () => new InReachSender();
+export { di };

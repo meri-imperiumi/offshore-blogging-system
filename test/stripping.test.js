@@ -1,8 +1,8 @@
 // Tests for stripping markdown image tags from the text-only variant body
 
-const { describe, it } = require("node:test");
-const assert = require("node:assert");
-const { stripImageMarkdown } = require("../plugin/index.js");
+import assert from "node:assert";
+import { describe, it } from "node:test";
+import { stripImageMarkdown } from "../plugin/index.js";
 
 describe("stripImageMarkdown", () => {
   it("should leave text without images unchanged", () => {

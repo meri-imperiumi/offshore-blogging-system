@@ -1,13 +1,11 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
 
 // Load via createRequire so the test shares the component's CJS module
 // instance — needed to mutate the module-level `di` seam (same idiom as the
 // StatusBuilder test).
-const require = createRequire(import.meta.url);
-const counterModule = require("../components/MetricCounter.js");
-const DatabaseHelper = require("../lib/DbHelper.js");
+import * as counterModule from "../components/MetricCounter.js";
+import DatabaseHelper from "../lib/DbHelper.js";
 
 /**
  * Build a counter wired to a fresh in-memory DB (via the di seam) and a

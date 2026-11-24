@@ -1,10 +1,8 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
 
 // Load component via createRequire so the test shares the component's CJS module instance
-const require = createRequire(import.meta.url);
-const PingHandlerModule = require("../components/PingHandler.js");
+import * as PingHandlerModule from "../components/PingHandler.js";
 
 describe("PingHandler component", () => {
   it("exists and exports getComponent", () => {

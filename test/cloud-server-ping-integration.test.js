@@ -9,16 +9,16 @@
 // Lives in its own file (own process) because noflo's network.stop() does not
 // reliably resolve mid-suite for this graph — see test/helpers/cloud-graph.js.
 
-const { describe, it, before, after } = require("node:test");
-const assert = require("node:assert");
-const {
+import assert from "node:assert";
+import { after, before, describe, it } from "node:test";
+import {
+  makeEmail,
   setupEnv,
-  teardownEnv,
   setupGraph,
   stopGraph,
-  makeEmail,
+  teardownEnv,
   waitForReceived,
-} = require("./helpers/cloud-graph");
+} from "./helpers/cloud-graph.js";
 
 let envCtx;
 let graphCtx;

@@ -1,16 +1,13 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
-
 // Load the component via createRequire (CJS) rather than a dynamic ESM import.
 // noflo's ComponentLoader requires components by absolute path, so to override
 // the injectable `di.createClient` factory and have the component actually see
 // the override, the test must share the *same* CJS module instance — which
 // createRequire guarantees but ESM `import()` of a CJS file does not under
 // `node --test`.
-const require = createRequire(import.meta.url);
-const senderModule = require("../components/InReachSender.js");
+import * as senderModule from "../components/InReachSender.js";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 const REPLY_URL =
   "https://explore.garmin.com/TextMessage/TxtMsg?extId=abc123guid&adr=someaddr";
@@ -57,7 +54,7 @@ function runScenario({ client, port, msg, controls = {}, timeout = 3000 }) {
     t.start()
       .then(() => {
         let received = null;
-        t.outs[port].on("data", (data) => {
+        onData(t.outs[port], (data) => {
           // Control-port IIPs (replyaddress, delayms) trigger process
           // activations that flush a null data packet + disconnect on the
           // out/error port before the real result. Ignore nulls and capture
@@ -66,7 +63,9 @@ function runScenario({ client, port, msg, controls = {}, timeout = 3000 }) {
             received = data;
           }
         });
-        t.outs[port].on("disconnect", () => {
+        // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+
+        onData(t.outs[port], (data) => {
           // Only resolve once the real payload's disconnect arrives.
           if (received !== null) {
             finish(() =>

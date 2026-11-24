@@ -1,16 +1,16 @@
 // Tests for offshore blogging encoding/decoding
 
-const { describe, it } = require("node:test");
-const assert = require("node:assert");
-const {
+import assert from "node:assert";
+import { describe, it } from "node:test";
+import {
   calculateCRC16,
-  parseFrontMatter,
+  chunkData,
   compressText,
   decompressText,
-  chunkData,
+  parseFrontMatter,
   reassembleChunks,
   SAIL_DICT,
-} = require("../plugin/index.js");
+} from "../plugin/index.js";
 
 describe("calculateCRC16", () => {
   it("should calculate CRC-16 correctly for empty buffer", () => {

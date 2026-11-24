@@ -1,4 +1,4 @@
-const { Component } = require("noflo-assembly");
+import { Component } from "@noflo/assembly";
 
 /**
  * DecoderBypass - Routes already-decoded messages directly to GitPublisher
@@ -36,7 +36,7 @@ class DecoderBypass extends Component {
     });
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     if (!input.hasData("in")) {
       return;
     }
@@ -63,4 +63,4 @@ class DecoderBypass extends Component {
   }
 }
 
-exports.getComponent = () => new DecoderBypass();
+export const getComponent = () => new DecoderBypass();

@@ -1,8 +1,8 @@
 // Tests for WinlinkBlogReceiver component
 
-const { test } = require("node:test");
-const assert = require("node:assert");
-const { getComponent } = require("../components/WinlinkBlogReceiver.js");
+import assert from "node:assert";
+import { test } from "node:test";
+import { getComponent } from "../components/WinlinkBlogReceiver.js";
 
 test("WinlinkBlogReceiver passes through non-Winlink messages", () => {
   const component = getComponent();

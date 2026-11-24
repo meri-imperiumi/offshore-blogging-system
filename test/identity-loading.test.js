@@ -2,14 +2,13 @@
 // This is an environment-specific smoketest - it will pass if signalk-reticulum
 // is configured on the system, but won't fail if it's not.
 
-const { test } = require("node:test");
-const assert = require("node:assert");
-const path = require("node:path");
-const fs = require("node:fs").promises;
+import assert from "node:assert";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { test } from "node:test";
+import { fromHex, Identity } from "@reticulum/core";
 
 test("should load identity from signalk-reticulum config file (environment-specific)", async (t) => {
-  const { Identity, fromHex } = require("@reticulum/core");
-
   // Try multiple possible config paths (matching the plugin's logic)
   const configPaths = [
     path.join(

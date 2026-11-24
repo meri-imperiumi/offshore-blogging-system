@@ -47,9 +47,6 @@
  */
 
 import { rmSync } from "node:fs";
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
 
 // ---------------------------------------------------------------------------
 // 1. Validate environment
@@ -120,7 +117,9 @@ console.log("");
 // 3. Database (file-based so GribFetcher and SaildocsMatcher share state)
 // ---------------------------------------------------------------------------
 rmSync(DB_PATH, { force: true });
-const DatabaseHelper = require("../lib/DbHelper.js");
+
+import DatabaseHelper from "../lib/DbHelper.js";
+
 const db = new DatabaseHelper(DB_PATH);
 db.initialize();
 
@@ -136,52 +135,76 @@ if (process.env.TEST_DEVICE_ID && process.env.TEST_IDENTITY_HASH) {
   console.log("");
 }
 
+import path from "node:path";
+import { createNodeModulesRegistry } from "@noflo/loader-node";
 // ---------------------------------------------------------------------------
 // 4. Build NoFlo graph
 // ---------------------------------------------------------------------------
-const noflo = require("noflo");
-const graph = noflo.graph.createGraph("weather-e2e");
+import { createNetwork, GraphModel } from "@noflo/noflo";
+
+const graph = new GraphModel({ name: "weather-e2e" });
 
 // Define ALL nodes first. NoFlo silently drops edges whose endpoints don't
 // exist yet, so adding an edge to a not-yet-created node loses it. This bit us
 // on the ack path (Reassembler.buffered → Acker was dropped because Acker was
 // defined later), causing unacked emails to be re-fetched every poll.
-graph.addNode("Timer", "core/RunInterval");
-graph.addNode("Fetcher", "ImapFetcher");
-graph.addNode("Verifier", "AuthVerifier");
-graph.addNode("Receiver", "InReachReceiver");
-graph.addNode("Reassembler", "MessageReassembler");
-graph.addNode("Router", "ParserRouter");
-graph.addNode("GribFetcher", "GribFetcher");
-graph.addNode("SmtpSender", "SmtpResponder");
-graph.addNode("SaildocsMatcher", "SaildocsMatcher");
-graph.addNode("GribChunker", "GribChunker");
-graph.addNode("Gate", "GribGate");
-graph.addNode("Dispatcher", "ReplyDispatcher");
-graph.addNode("InReachSender", "InReachSender");
-graph.addNode("Acker", "ImapAcker");
-graph.addNode("MissedDrop", "core/Drop");
-graph.addNode("ErrorDrop", "core/Drop");
-graph.addNode("HostEnv", "core/ReadEnv");
-graph.addNode("PortEnv", "core/ReadEnv");
-graph.addNode("UserEnv", "core/ReadEnv");
-graph.addNode("PassEnv", "core/ReadEnv");
-graph.addNode("MailboxEnv", "core/ReadEnv");
+graph.addNode({ entity_id: "Timer", component: "core/RunInterval" });
+graph.addNode({ entity_id: "Fetcher", component: "ImapFetcher" });
+graph.addNode({ entity_id: "Verifier", component: "AuthVerifier" });
+graph.addNode({ entity_id: "Receiver", component: "InReachReceiver" });
+graph.addNode({ entity_id: "Reassembler", component: "MessageReassembler" });
+graph.addNode({ entity_id: "Router", component: "ParserRouter" });
+graph.addNode({ entity_id: "GribFetcher", component: "GribFetcher" });
+graph.addNode({ entity_id: "SmtpSender", component: "SmtpResponder" });
+graph.addNode({ entity_id: "SaildocsMatcher", component: "SaildocsMatcher" });
+graph.addNode({ entity_id: "GribChunker", component: "GribChunker" });
+graph.addNode({ entity_id: "Gate", component: "GribGate" });
+graph.addNode({ entity_id: "Dispatcher", component: "ReplyDispatcher" });
+graph.addNode({ entity_id: "InReachSender", component: "InReachSender" });
+graph.addNode({ entity_id: "Acker", component: "ImapAcker" });
+graph.addNode({ entity_id: "MissedDrop", component: "core/Drop" });
+graph.addNode({ entity_id: "ErrorDrop", component: "core/Drop" });
+graph.addNode({ entity_id: "HostEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "PortEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "UserEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "PassEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "MailboxEnv", component: "core/ReadEnv" });
 
 // --- Receive path (shared for InReach requests and Saildocs responses) ---
-graph.addEdge("Timer", "out", "Fetcher", "in");
-graph.addEdge("Fetcher", "out", "Verifier", "in");
-graph.addEdge("Verifier", "out", "Receiver", "in");
-graph.addEdge("Receiver", "out", "Reassembler", "in");
-graph.addEdge("Reassembler", "out", "Router", "in");
+graph.addEdge({
+  from: { node: "Timer", port: "out" },
+  to: { node: "Fetcher", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Fetcher", port: "out" },
+  to: { node: "Verifier", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Verifier", port: "out" },
+  to: { node: "Receiver", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Receiver", port: "out" },
+  to: { node: "Reassembler", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Reassembler", port: "out" },
+  to: { node: "Router", port: "in" },
+});
 // Buffered (incomplete) chunks acked immediately so their emails aren't
 // re-fetched on every poll. (Weather requests are plain text and pass
 // straight through, but this keeps the graph correct for blog chunks too.)
-graph.addEdge("Reassembler", "buffered", "Acker", "in");
+graph.addEdge({
+  from: { node: "Reassembler", port: "buffered" },
+  to: { node: "Acker", port: "in" },
+});
 
 // --- GRIB request path: forward to Saildocs via SMTP ---
 // ParserRouter's `out` port is addressable (array). OUT[1] = GRIB.
-graph.addEdgeIndex("Router", "out", 1, "GribFetcher", "in", null);
+graph.addEdge({
+  from: { node: "Router", port: "out", index: 1 },
+  to: { node: "GribFetcher", port: "in" },
+});
 // GribFetcher emits the Saildocs outbound email on OUTBOX → SmtpSender
 // (which sends it via SMTP). The original InReach request email is acked
 // only AFTER the SMTP send succeeds (SmtpSender.out → Acker), not at queue
@@ -190,91 +213,183 @@ graph.addEdgeIndex("Router", "out", 1, "GribFetcher", "in", null);
 // it is safer to send the request twice than to ack early and silently
 // lose it when SMTP fails. The pending_saildocs DB entry preserves
 // request context for the async Saildocs round-trip.
-graph.addEdge("GribFetcher", "outbox", "SmtpSender", "in");
-graph.addEdge("SmtpSender", "out", "Acker", "in");
+graph.addEdge({
+  from: { node: "GribFetcher", port: "outbox" },
+  to: { node: "SmtpSender", port: "in" },
+});
+graph.addEdge({
+  from: { node: "SmtpSender", port: "out" },
+  to: { node: "Acker", port: "in" },
+});
 // SMTP send failures are dropped here — the request email is NOT acked
 // (SmtpSender.out didn't fire), so it stays unseen and is retried next poll.
-graph.addEdge("SmtpSender", "error", "ErrorDrop", "in");
+graph.addEdge({
+  from: { node: "SmtpSender", port: "error" },
+  to: { node: "ErrorDrop", port: "in" },
+});
 
 // --- SAILDOCS response path: extract GRIB, chunk, send back ---
 // Router OUT[2] = SAILDOCS. The `out` port is addressable (array).
-graph.addEdgeIndex("Router", "out", 2, "SaildocsMatcher", "in", null);
+graph.addEdge({
+  from: { node: "Router", port: "out", index: 2 },
+  to: { node: "SaildocsMatcher", port: "in" },
+});
 // SaildocsMatcher.direct → GribChunker (GRIB data path)
-graph.addEdge("SaildocsMatcher", "direct", "GribChunker", "in");
+graph.addEdge({
+  from: { node: "SaildocsMatcher", port: "direct" },
+  to: { node: "GribChunker", port: "in" },
+});
 // SaildocsMatcher.out → Dispatcher: error responses (no GRIB attachment,
 // e.g. Saildocs "HTTP 405" / "command error" replies) carry the error
 // text as a NOTIFY payload straight to the user. They bypass GribChunker
 // (which is for binary GRIB only). GRIB responses go on `direct` only, so
 // there is no double-delivery.
-graph.addEdge("SaildocsMatcher", "out", "Dispatcher", "in");
-graph.addEdge("GribChunker", "out", "Gate", "in");
-graph.addEdge("Gate", "out", "Dispatcher", "in");
-graph.addEdge("Gate", "notify", "Dispatcher", "in");
-graph.addEdge("Dispatcher", "inreach", "InReachSender", "in");
+graph.addEdge({
+  from: { node: "SaildocsMatcher", port: "out" },
+  to: { node: "Dispatcher", port: "in" },
+});
+graph.addEdge({
+  from: { node: "GribChunker", port: "out" },
+  to: { node: "Gate", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Gate", port: "out" },
+  to: { node: "Dispatcher", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Gate", port: "notify" },
+  to: { node: "Dispatcher", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Dispatcher", port: "inreach" },
+  to: { node: "InReachSender", port: "in" },
+});
 // InReachSender.out → Acker: the Saildocs response email is acked only
 // AFTER the content (GRIB chunks or error text) has been successfully
 // delivered to the InReach device. If delivery fails, the email stays
 // unseen and is re-fetched on the next poll, retrying the delivery. This
 // is the only ack path for Saildocs response emails — we do NOT ack at
 // extraction time.
-graph.addEdge("InReachSender", "out", "Acker", "in");
+graph.addEdge({
+  from: { node: "InReachSender", port: "out" },
+  to: { node: "Acker", port: "in" },
+});
 
 // --- NOTIFY path (gate consent prompts, etc.) → ReplyDispatcher ---
 // ParserRouter OUT[4] = NOTIFY. Drop into Dispatcher so consent prompts
 // reach the user. (Small GRIBs won't trigger this, but keep it correct.)
-graph.addEdgeIndex("Router", "out", 4, "Dispatcher", "in", null);
+graph.addEdge({
+  from: { node: "Router", port: "out", index: 4 },
+  to: { node: "Dispatcher", port: "in" },
+});
 
 // --- Router error/missed → Drop (logged via ip event) ---
-graph.addEdge("Router", "missed", "MissedDrop", "in");
-graph.addEdge("Router", "error", "ErrorDrop", "in");
+graph.addEdge({
+  from: { node: "Router", port: "missed" },
+  to: { node: "MissedDrop", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Router", port: "error" },
+  to: { node: "ErrorDrop", port: "in" },
+});
 
 // --- core/ReadEnv nodes for IMAP credentials (fan out to Fetcher + Acker) ---
-graph.addEdge("HostEnv", "out", "Fetcher", "host");
-graph.addEdge("HostEnv", "out", "Acker", "host");
-graph.addEdge("PortEnv", "out", "Fetcher", "port");
-graph.addEdge("PortEnv", "out", "Acker", "port");
-graph.addEdge("UserEnv", "out", "Fetcher", "username");
-graph.addEdge("UserEnv", "out", "Acker", "username");
-graph.addEdge("PassEnv", "out", "Fetcher", "password");
-graph.addEdge("PassEnv", "out", "Acker", "password");
-graph.addEdge("MailboxEnv", "out", "Fetcher", "mailbox");
-graph.addEdge("MailboxEnv", "out", "Acker", "mailbox");
+graph.addEdge({
+  from: { node: "HostEnv", port: "out" },
+  to: { node: "Fetcher", port: "host" },
+});
+graph.addEdge({
+  from: { node: "HostEnv", port: "out" },
+  to: { node: "Acker", port: "host" },
+});
+graph.addEdge({
+  from: { node: "PortEnv", port: "out" },
+  to: { node: "Fetcher", port: "port" },
+});
+graph.addEdge({
+  from: { node: "PortEnv", port: "out" },
+  to: { node: "Acker", port: "port" },
+});
+graph.addEdge({
+  from: { node: "UserEnv", port: "out" },
+  to: { node: "Fetcher", port: "username" },
+});
+graph.addEdge({
+  from: { node: "UserEnv", port: "out" },
+  to: { node: "Acker", port: "username" },
+});
+graph.addEdge({
+  from: { node: "PassEnv", port: "out" },
+  to: { node: "Fetcher", port: "password" },
+});
+graph.addEdge({
+  from: { node: "PassEnv", port: "out" },
+  to: { node: "Acker", port: "password" },
+});
+graph.addEdge({
+  from: { node: "MailboxEnv", port: "out" },
+  to: { node: "Fetcher", port: "mailbox" },
+});
+graph.addEdge({
+  from: { node: "MailboxEnv", port: "out" },
+  to: { node: "Acker", port: "mailbox" },
+});
 
 // --- IIPs ---
 // IMAP config keys
-graph.addInitial("IMAP_HOST", "HostEnv", "key");
-graph.addInitial("IMAP_PORT", "PortEnv", "key");
-graph.addInitial("IMAP_USERNAME", "UserEnv", "key");
-graph.addInitial("IMAP_PASSWORD", "PassEnv", "key");
-graph.addInitial("IMAP_MAILBOX", "MailboxEnv", "key");
+graph.addIIP({ to: { node: "HostEnv", port: "key" }, data: "IMAP_HOST" });
+graph.addIIP({ to: { node: "PortEnv", port: "key" }, data: "IMAP_PORT" });
+graph.addIIP({ to: { node: "UserEnv", port: "key" }, data: "IMAP_USERNAME" });
+graph.addIIP({ to: { node: "PassEnv", port: "key" }, data: "IMAP_PASSWORD" });
+graph.addIIP({ to: { node: "MailboxEnv", port: "key" }, data: "IMAP_MAILBOX" });
 
 // Timer
-graph.addInitial(POLL_INTERVAL, "Timer", "interval");
-graph.addInitial(true, "Timer", "start");
+graph.addIIP({ to: { node: "Timer", port: "interval" }, data: POLL_INTERVAL });
+graph.addIIP({ to: { node: "Timer", port: "start" }, data: true });
 
 // ParserRouter routes
-graph.addInitial("BLOG,GRIB,SAILDOCS,SYS,NOTIFY", "Router", "routes");
+graph.addIIP({
+  to: { node: "Router", port: "routes" },
+  data: "BLOG,GRIB,SAILDOCS,SYS,NOTIFY",
+});
 
 // SmtpResponder control ports (MUST be before GribFetcher's data — see
 // saildocs-runner.js: SmtpResponder falls back to port 587 if the port IIP
 // hasn't arrived before the OUTBOX data).
-graph.addInitial(process.env.SMTP_HOST, "SmtpSender", "smtp_host");
-graph.addInitial(SMTP_PORT, "SmtpSender", "smtp_port");
-graph.addInitial(process.env.SMTP_USERNAME, "SmtpSender", "smtp_user");
-graph.addInitial(process.env.SMTP_PASSWORD, "SmtpSender", "smtp_pass");
+graph.addIIP({
+  to: { node: "SmtpSender", port: "smtp_host" },
+  data: process.env.SMTP_HOST,
+});
+graph.addIIP({
+  to: { node: "SmtpSender", port: "smtp_port" },
+  data: SMTP_PORT,
+});
+graph.addIIP({
+  to: { node: "SmtpSender", port: "smtp_user" },
+  data: process.env.SMTP_USERNAME,
+});
+graph.addIIP({
+  to: { node: "SmtpSender", port: "smtp_pass" },
+  data: process.env.SMTP_PASSWORD,
+});
 
 // GribFetcher + SaildocsMatcher + GribGate share the DB
-graph.addInitial(DB_PATH, "GribFetcher", "dbpath");
-graph.addInitial(DB_PATH, "SaildocsMatcher", "dbpath");
-graph.addInitial(DB_PATH, "Gate", "dbpath");
+graph.addIIP({ to: { node: "GribFetcher", port: "dbpath" }, data: DB_PATH });
+graph.addIIP({
+  to: { node: "SaildocsMatcher", port: "dbpath" },
+  data: DB_PATH,
+});
+graph.addIIP({ to: { node: "Gate", port: "dbpath" }, data: DB_PATH });
 
 // InReachSender config
-graph.addInitial(
-  process.env.INREACH_REPLY_ADDRESS,
-  "InReachSender",
-  "replyaddress",
-);
-graph.addInitial(CHUNK_DELAY, "InReachSender", "delayms");
+graph.addIIP({
+  to: { node: "InReachSender", port: "replyaddress" },
+  data: process.env.INREACH_REPLY_ADDRESS,
+});
+graph.addIIP({
+  to: { node: "InReachSender", port: "delayms" },
+  data: CHUNK_DELAY,
+});
 
 // GribChunker chunk size (base64 chars). Must keep the TOTAL InReach
 // message (envelope header `msg i/total:grib:<id>\n` + data) under ~120
@@ -282,12 +397,12 @@ graph.addInitial(CHUNK_DELAY, "InReachSender", "delayms");
 // 160 hard limit, which corrupts the base64 and breaks reassembly (the
 // `atob: invalid character` error). Both reference implementations capped
 // at 120 total. 96 + ~23-char header = ~119, safely under budget.
-graph.addInitial(96, "GribChunker", "max_chunk_size");
+graph.addIIP({ to: { node: "GribChunker", port: "max_chunk_size" }, data: 96 });
 // GribGate threshold: 15 chunks × 96 base64 ≈ 1KB of GRIB before consent is
 // required (matches the original 10×140 ≈ 1KB gating point). Lets the test
 // GRIB (~800 bytes → 12 chunks at 96) pass through while still gating
 // larger, expensive deliveries.
-graph.addInitial(15, "Gate", "max_chunks");
+graph.addIIP({ to: { node: "Gate", port: "max_chunks" }, data: 15 });
 
 // ---------------------------------------------------------------------------
 // 5. State tracking
@@ -298,18 +413,22 @@ const sendTime = Date.now();
 // ---------------------------------------------------------------------------
 // 6. Start network
 // ---------------------------------------------------------------------------
-noflo
-  .createNetwork(graph, { subscribeGraph: false })
+const registry = await createNodeModulesRegistry(
+  path.resolve(import.meta.dirname, ".."),
+);
+
+createNetwork(graph, { registry })
   .then((network) => {
     console.log("=== Network started ===");
     console.log("");
 
-    network.on("process-error", (error) => {
+    network.addEventListener("process-error", (event) => {
+      const error = event.detail;
       console.error("[Process Error]:", error.error?.message || error.message);
     });
 
     // Inject database into AuthVerifier for device lookup
-    const verifierProc = network.getNode("Verifier");
+    const verifierProc = network.processes.Verifier;
     if (verifierProc?.component) {
       verifierProc.component.db = db;
       console.log("[Setup] Injected DB into AuthVerifier");
@@ -317,7 +436,8 @@ noflo
 
     // Monitor packet flow via the network 'ip' event (the only reliable way
     // to observe NoFlo packet flow — see ping-pong-runner.js comment).
-    network.on("ip", (packet) => {
+    network.addEventListener("ip", (event) => {
+      const packet = event.detail;
       if (packet.type !== "data") return;
       const from = packet.socket.from
         ? `${packet.socket.from.process.id}.${packet.socket.from.port}`

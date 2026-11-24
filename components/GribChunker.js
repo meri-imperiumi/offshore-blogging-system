@@ -1,4 +1,4 @@
-const { Component, fail } = require("noflo-assembly");
+import { Component, fail } from "@noflo/assembly";
 
 /**
  * GribChunker - Chunks GRIB data for transmission
@@ -27,7 +27,6 @@ class GribChunker extends Component {
             "references/garmin-character-counts.txt). Default: 96.",
           control: true,
           required: false,
-          default: 96,
         },
       },
     });
@@ -55,7 +54,7 @@ class GribChunker extends Component {
     return id;
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Process control ports
     if (input.hasData("max_chunk_size")) {
       this.maxChunkSize = input.getData("max_chunk_size");
@@ -124,4 +123,4 @@ class GribChunker extends Component {
   }
 }
 
-exports.getComponent = () => new GribChunker();
+export const getComponent = () => new GribChunker();

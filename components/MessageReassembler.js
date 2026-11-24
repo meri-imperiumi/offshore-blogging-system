@@ -1,5 +1,5 @@
-const { Component, failed, fail } = require("noflo-assembly");
-const DatabaseHelper = require("../lib/DbHelper");
+import { Component, fail, failed } from "@noflo/assembly";
+import DatabaseHelper from "../lib/DbHelper.js";
 
 /**
  * MessageReassembler - Reassembles multi-part messages from buffer_chunks
@@ -61,7 +61,7 @@ class MessageReassembler extends Component {
     this.ttl = 900; // 15 minutes default
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     try {
       return this.doHandle(input, output);
     } catch (err) {
@@ -343,4 +343,4 @@ class MessageReassembler extends Component {
   }
 }
 
-exports.getComponent = () => new MessageReassembler();
+export const getComponent = () => new MessageReassembler();

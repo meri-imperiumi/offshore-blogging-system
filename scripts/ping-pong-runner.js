@@ -11,10 +11,6 @@
  * receives it via IMAP, verifies the sender, responds with "PONG".
  */
 
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
-
 // Validate environment variables
 const requiredEnv = [
   "IMAP_HOST",
@@ -57,7 +53,8 @@ if (process.env.TEST_DEVICE_ID) {
 console.log("");
 
 // Initialize database
-const DatabaseHelper = require("../lib/DbHelper.js");
+import DatabaseHelper from "../lib/DbHelper.js";
+
 const db = new DatabaseHelper(":memory:");
 db.initialize();
 
@@ -73,75 +70,127 @@ if (process.env.TEST_DEVICE_ID && process.env.TEST_IDENTITY_HASH) {
   console.log("");
 }
 
+import path from "node:path";
+import { createNodeModulesRegistry } from "@noflo/loader-node";
 // Load NoFlo
-const noflo = require("noflo");
+import { createNetwork, GraphModel } from "@noflo/noflo";
 
 // Create graph programmatically
-const graph = noflo.graph.createGraph("ping-pong");
+const graph = new GraphModel({ name: "ping-pong" });
 
 // Add nodes
-graph.addNode("Fetcher", "ImapFetcher");
-graph.addNode("Verifier", "AuthVerifier");
-graph.addNode("PongHandler", "PongHandler");
-graph.addNode("Sender", "InReachSender");
-graph.addNode("Acker", "ImapAcker");
+graph.addNode({ entity_id: "Fetcher", component: "ImapFetcher" });
+graph.addNode({ entity_id: "Verifier", component: "AuthVerifier" });
+graph.addNode({ entity_id: "PongHandler", component: "PongHandler" });
+graph.addNode({ entity_id: "Sender", component: "InReachSender" });
+graph.addNode({ entity_id: "Acker", component: "ImapAcker" });
 
 // core/RunInterval: emits a bang every N ms to trigger a fetch cycle
-graph.addNode("Timer", "core/RunInterval");
+graph.addNode({ entity_id: "Timer", component: "core/RunInterval" });
 
 // core/ReadEnv nodes: each reads one env var and fans out to Fetcher + Acker
-graph.addNode("HostEnv", "core/ReadEnv");
-graph.addNode("PortEnv", "core/ReadEnv");
-graph.addNode("UserEnv", "core/ReadEnv");
-graph.addNode("PassEnv", "core/ReadEnv");
-graph.addNode("MailboxEnv", "core/ReadEnv");
+graph.addNode({ entity_id: "HostEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "PortEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "UserEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "PassEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "MailboxEnv", component: "core/ReadEnv" });
 
 // Add edges
-graph.addEdge("Timer", "out", "Fetcher", "in");
-graph.addEdge("Fetcher", "out", "Verifier", "in");
-graph.addEdge("Verifier", "out", "PongHandler", "in");
-graph.addEdge("PongHandler", "out", "Sender", "in");
-graph.addEdge("Sender", "out", "Acker", "in");
+graph.addEdge({
+  from: { node: "Timer", port: "out" },
+  to: { node: "Fetcher", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Fetcher", port: "out" },
+  to: { node: "Verifier", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Verifier", port: "out" },
+  to: { node: "PongHandler", port: "in" },
+});
+graph.addEdge({
+  from: { node: "PongHandler", port: "out" },
+  to: { node: "Sender", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Sender", port: "out" },
+  to: { node: "Acker", port: "in" },
+});
 
 // ReadEnv -> Fetcher + Acker (single source, fanned out)
-graph.addEdge("HostEnv", "out", "Fetcher", "host");
-graph.addEdge("HostEnv", "out", "Acker", "host");
-graph.addEdge("PortEnv", "out", "Fetcher", "port");
-graph.addEdge("PortEnv", "out", "Acker", "port");
-graph.addEdge("UserEnv", "out", "Fetcher", "username");
-graph.addEdge("UserEnv", "out", "Acker", "username");
-graph.addEdge("PassEnv", "out", "Fetcher", "password");
-graph.addEdge("PassEnv", "out", "Acker", "password");
-graph.addEdge("MailboxEnv", "out", "Fetcher", "mailbox");
-graph.addEdge("MailboxEnv", "out", "Acker", "mailbox");
+graph.addEdge({
+  from: { node: "HostEnv", port: "out" },
+  to: { node: "Fetcher", port: "host" },
+});
+graph.addEdge({
+  from: { node: "HostEnv", port: "out" },
+  to: { node: "Acker", port: "host" },
+});
+graph.addEdge({
+  from: { node: "PortEnv", port: "out" },
+  to: { node: "Fetcher", port: "port" },
+});
+graph.addEdge({
+  from: { node: "PortEnv", port: "out" },
+  to: { node: "Acker", port: "port" },
+});
+graph.addEdge({
+  from: { node: "UserEnv", port: "out" },
+  to: { node: "Fetcher", port: "username" },
+});
+graph.addEdge({
+  from: { node: "UserEnv", port: "out" },
+  to: { node: "Acker", port: "username" },
+});
+graph.addEdge({
+  from: { node: "PassEnv", port: "out" },
+  to: { node: "Fetcher", port: "password" },
+});
+graph.addEdge({
+  from: { node: "PassEnv", port: "out" },
+  to: { node: "Acker", port: "password" },
+});
+graph.addEdge({
+  from: { node: "MailboxEnv", port: "out" },
+  to: { node: "Fetcher", port: "mailbox" },
+});
+graph.addEdge({
+  from: { node: "MailboxEnv", port: "out" },
+  to: { node: "Acker", port: "mailbox" },
+});
 
 // Add IIPs (Initial Information Packets)
-graph.addInitial("IMAP_HOST", "HostEnv", "key");
-graph.addInitial("IMAP_PORT", "PortEnv", "key");
-graph.addInitial("IMAP_USERNAME", "UserEnv", "key");
-graph.addInitial("IMAP_PASSWORD", "PassEnv", "key");
-graph.addInitial("IMAP_MAILBOX", "MailboxEnv", "key");
+graph.addIIP({ to: { node: "HostEnv", port: "key" }, data: "IMAP_HOST" });
+graph.addIIP({ to: { node: "PortEnv", port: "key" }, data: "IMAP_PORT" });
+graph.addIIP({ to: { node: "UserEnv", port: "key" }, data: "IMAP_USERNAME" });
+graph.addIIP({ to: { node: "PassEnv", port: "key" }, data: "IMAP_PASSWORD" });
+graph.addIIP({ to: { node: "MailboxEnv", port: "key" }, data: "IMAP_MAILBOX" });
 // RunInterval: 15s poll cycle (ms). start bang kicks it off.
-graph.addInitial(15000, "Timer", "interval");
-graph.addInitial(true, "Timer", "start");
-graph.addInitial(process.env.INREACH_REPLY_ADDRESS, "Sender", "replyaddress");
-graph.addInitial(5000, "Sender", "delayms");
+graph.addIIP({ to: { node: "Timer", port: "interval" }, data: 15000 });
+graph.addIIP({ to: { node: "Timer", port: "start" }, data: true });
+graph.addIIP({
+  to: { node: "Sender", port: "replyaddress" },
+  data: process.env.INREACH_REPLY_ADDRESS,
+});
+graph.addIIP({ to: { node: "Sender", port: "delayms" }, data: 5000 });
 
 // createNetwork already connects and starts the network
-noflo
-  .createNetwork(graph, {
-    subscribeGraph: false,
-  })
+const registry = await createNodeModulesRegistry(
+  path.resolve(import.meta.dirname, ".."),
+);
+
+createNetwork(graph, { registry })
   .then((network) => {
     console.log("=== Network started ===");
 
     // Subscribe to network-level errors
-    network.on("process-error", (error) => {
+    network.addEventListener("process-error", (event) => {
+      const error = event.detail;
       console.error("[Process Error]:", error.error?.message || error.message);
     });
 
     // Get process instances (synchronous, available after connect)
-    const verifierProc = network.getNode("Verifier");
+    const verifierProc = network.processes.Verifier;
 
     // Inject database into AuthVerifier for device lookup
     if (verifierProc?.component) {
@@ -156,7 +205,8 @@ noflo
     // previous per-port listeners were dead code. The network-level 'ip'
     // event fires for every packet on every socket, so we route all
     // monitoring through a single handler that dispatches by source node.
-    network.on("ip", (packet) => {
+    network.addEventListener("ip", (event) => {
+      const packet = event.detail;
       if (packet.type !== "data") return;
       const from = packet.socket.from
         ? `${packet.socket.from.process.id}.${packet.socket.from.port}`

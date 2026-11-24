@@ -1,11 +1,8 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
-import { fail, failed } from "noflo-assembly";
-
-const require = createRequire(import.meta.url);
-const { InReachError } = require("../lib/InReachClient.js");
-const { renderAlert } = require("../components/AlertComposer.js");
+import { fail, failed } from "@noflo/assembly";
+import { renderAlert } from "../components/AlertComposer.js";
+import { InReachError } from "../lib/InReachClient.js";
 
 describe("AlertComposer context extraction", () => {
   it("includes blog post details in SESSION_EXPIRED alert", () => {

@@ -1,6 +1,6 @@
-const { Component, failed } = require("noflo-assembly");
-const DatabaseHelper = require("../lib/DbHelper");
-const { extractGribFromMime } = require("../lib/GribMime");
+import { Component, failed } from "@noflo/assembly";
+import DatabaseHelper from "../lib/DbHelper.js";
+import { extractGribFromMime } from "../lib/GribMime.js";
 
 /**
  * SaildocsMatcher - Receives inbound Saildocs emails and matches to pending requests
@@ -53,7 +53,7 @@ class SaildocsMatcher extends Component {
     this.dbPath = ":memory:";
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Process control ports
     if (input.hasData("dbpath")) {
       this.dbPath = input.getData("dbpath");
@@ -199,4 +199,4 @@ class SaildocsMatcher extends Component {
   }
 }
 
-exports.getComponent = () => new SaildocsMatcher();
+export const getComponent = () => new SaildocsMatcher();

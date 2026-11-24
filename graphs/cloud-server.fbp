@@ -130,8 +130,6 @@ Router MISSED -> IN ErrorLogger(ErrorLogger)
 # MISSED = unrecognized intent. Also ack it so the email doesn't loop
 # unseen (re-fetched every poll forever); ErrorLogger still records it.
 Router MISSED -> IN ImapAcker(ImapAcker)
-# ReplyDispatcher also routes its failed messages to ErrorLogger
-ReplyDispatcher SMTP -> IN ErrorLogger(ErrorLogger)
 
 # 4. Application Logic: Blog Pipeline
 'blog:publish' -> PERMISSION BlogAuth(DacarAuthorizer)

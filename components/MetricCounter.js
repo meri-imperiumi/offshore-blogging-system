@@ -1,5 +1,5 @@
-const { Component, failed } = require("noflo-assembly");
-const DatabaseHelper = require("../lib/DbHelper");
+import { Component, failed } from "@noflo/assembly";
+import DatabaseHelper from "../lib/DbHelper.js";
 
 // Injectable DB factory (same seam as StatusBuilder) so tests can share an
 // in-memory DB and assert the resulting metric values without touching disk.
@@ -91,7 +91,7 @@ class MetricCounter extends Component {
     return 0;
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Read control ports (buffered from IIPs)
     if (input.hasData("metric")) {
       this.metric = input.getData("metric");
@@ -130,5 +130,5 @@ class MetricCounter extends Component {
   }
 }
 
-exports.getComponent = () => new MetricCounter();
-exports.di = di;
+export const getComponent = () => new MetricCounter();
+export { di };

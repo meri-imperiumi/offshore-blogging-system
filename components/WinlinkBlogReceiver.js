@@ -1,4 +1,4 @@
-const { Component } = require("noflo-assembly");
+import { Component } from "@noflo/assembly";
 
 /**
  * WinlinkBlogReceiver - Parses Winlink blog post emails and converts to GitPublisher format
@@ -56,7 +56,7 @@ class WinlinkBlogReceiver extends Component {
     });
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     if (!input.hasData("in")) {
       return;
     }
@@ -258,4 +258,4 @@ class WinlinkBlogReceiver extends Component {
   }
 }
 
-exports.getComponent = () => new WinlinkBlogReceiver();
+export const getComponent = () => new WinlinkBlogReceiver();

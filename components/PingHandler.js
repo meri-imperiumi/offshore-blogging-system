@@ -1,4 +1,4 @@
-const { Component } = require("noflo-assembly");
+import { Component } from "@noflo/assembly";
 
 /**
  * PingHandler - Responds to PING system command with PONG
@@ -32,4 +32,4 @@ class PingHandler extends Component {
   }
 }
 
-exports.getComponent = () => new PingHandler();
+export const getComponent = () => new PingHandler();

@@ -1,15 +1,13 @@
 import assert from "node:assert";
 import { execSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { createRequire } from "node:module";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { after, afterEach, before, describe, it } from "node:test";
 import tls from "node:tls";
 
-const require = createRequire(import.meta.url);
-const SmtpClient = require("../lib/SmtpClient.js");
+import SmtpClient from "../lib/SmtpClient.js";
 
 // Self-signed cert for localhost, used to exercise the STARTTLS upgrade.
 // Generated on the fly into a per-run temp dir so the suite is self-contained

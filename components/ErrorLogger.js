@@ -1,6 +1,6 @@
-const { Component } = require("noflo-assembly");
-const fs = require("node:fs");
-const path = require("node:path");
+import fs from "node:fs";
+import path from "node:path";
+import { Component } from "@noflo/assembly";
 
 /**
  * ErrorLogger - Appends structured error lines to a rotating log file
@@ -36,7 +36,7 @@ class ErrorLogger extends Component {
     });
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     if (!input.hasData("in")) {
       return null;
     }
@@ -47,7 +47,7 @@ class ErrorLogger extends Component {
     let logPath = input.hasData("logpath") ? input.getData("logpath") : null;
     if (!logPath) {
       // Default to cloud/errors.log in project root
-      logPath = path.join(__dirname, "..", "cloud", "errors.log");
+      logPath = path.join(import.meta.dirname, "..", "cloud", "errors.log");
     }
 
     // Ensure log directory exists
@@ -129,4 +129,4 @@ class ErrorLogger extends Component {
   }
 }
 
-exports.getComponent = () => new ErrorLogger();
+export const getComponent = () => new ErrorLogger();

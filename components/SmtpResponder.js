@@ -1,5 +1,5 @@
-const { Component, failed, fail } = require("noflo-assembly");
-const SmtpClient = require("../lib/SmtpClient");
+import { Component, fail, failed } from "@noflo/assembly";
+import SmtpClient from "../lib/SmtpClient.js";
 
 // Injectable client factory so tests can substitute a mock client without a
 // real SMTP server. Production uses the real SmtpClient.
@@ -16,7 +16,7 @@ const di = {
  * - Sends via the configured SMTP server to msg.replyTo
  * - Used for Winlink replies and Saildocs outbound requests
  *
- * NOTE: handle() is intentionally NOT async. NoFlo's handleIP wraps async
+ * NOTE: processMessage() is intentionally NOT async. NoFlo's handleIP wraps async
  * process functions so that when the returned Promise resolves, it calls
  * output.sendDone(resolvedValue). If the handle already called sendDone()
  * internally, this causes a duplicate send on the out port. Using a sync
@@ -36,14 +36,12 @@ class SmtpResponder extends Component {
           description: "SMTP server host",
           control: true,
           required: false,
-          default: "smtp.mailbox.org",
         },
         smtp_port: {
           datatype: "number",
           description: "SMTP server port",
           control: true,
           required: false,
-          default: 587,
         },
         smtp_user: {
           datatype: "string",
@@ -73,7 +71,7 @@ class SmtpResponder extends Component {
     this.smtpPass = null;
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Process control ports
     if (input.hasData("smtp_host")) {
       this.smtpHost = input.getData("smtp_host");
@@ -146,7 +144,7 @@ class SmtpResponder extends Component {
     }
 
     // Create SMTP client and send asynchronously. Using .then()/.catch()
-    // instead of async/await so that handle() returns undefined (not a
+    // instead of async/await so that processMessage() returns undefined (not a
     // Promise). If it returned a Promise, NoFlo would call
     // output.sendDone(resolvedValue) on resolve, causing a duplicate send.
     const client = di.createClient(this.smtpHost, this.smtpPort, {
@@ -171,5 +169,5 @@ class SmtpResponder extends Component {
   }
 }
 
-exports.getComponent = () => new SmtpResponder();
-exports.di = di;
+export const getComponent = () => new SmtpResponder();
+export { di };

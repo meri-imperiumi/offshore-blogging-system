@@ -1,4 +1,4 @@
-const { Component, fork } = require("noflo-assembly");
+import { Component, fork } from "@noflo/assembly";
 
 /**
  * BlogAckBuilder - Build a confirmation reply after blog post is decoded.
@@ -47,4 +47,4 @@ class BlogAckBuilder extends Component {
   }
 }
 
-exports.getComponent = () => new BlogAckBuilder();
+export const getComponent = () => new BlogAckBuilder();

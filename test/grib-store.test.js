@@ -4,13 +4,13 @@
 // type-`G` chunks, reassembles the binary, verifies the `GRIB` magic, and
 // persists the result so any Signal K user can download it later.
 
-const { describe, it, before, after } = require("node:test");
-const assert = require("node:assert");
-const fs = require("node:fs").promises;
-const path = require("node:path");
-const os = require("node:os");
+import assert from "node:assert";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { after, before, describe, it } from "node:test";
 
-const { GribStore, parseCompactChunk } = require("../lib/GribStore.js");
+import { GribStore, parseCompactChunk } from "../lib/GribStore.js";
 
 // Helper: build a fake GRIB binary (magic + payload) and chunk it using the
 // same compact-header format GribChunker emits: <id>G<idx><total>:<base64>.

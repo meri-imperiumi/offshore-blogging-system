@@ -5,16 +5,16 @@
 // (test/helpers/cloud-graph.js); see that module for why one file = one
 // network.
 
-const { describe, it, before, after } = require("node:test");
-const assert = require("node:assert");
-const {
+import assert from "node:assert";
+import { after, before, describe, it } from "node:test";
+import {
+  makeEmail,
   setupEnv,
-  teardownEnv,
   setupGraph,
   stopGraph,
-  makeEmail,
+  teardownEnv,
   waitForReceived,
-} = require("./helpers/cloud-graph");
+} from "./helpers/cloud-graph.js";
 
 let envCtx;
 let graphCtx;

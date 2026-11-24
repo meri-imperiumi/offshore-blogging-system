@@ -3,13 +3,13 @@
 // mocked browser globals (same pattern as copy-clipboard.test.js) and call
 // the pure static buildWeatherMessage() method.
 
-const { describe, it } = require("node:test");
-const assert = require("node:assert");
-const vm = require("node:vm");
-const fs = require("node:fs");
-const path = require("node:path");
+import assert from "node:assert";
+import fs from "node:fs";
+import path from "node:path";
+import { describe, it } from "node:test";
+import vm from "node:vm";
 
-const appJsPath = path.join(__dirname, "..", "public", "app.js");
+const appJsPath = path.join(import.meta.dirname, "..", "public", "app.js");
 const appSource = fs.readFileSync(appJsPath, "utf8");
 
 function loadUI() {

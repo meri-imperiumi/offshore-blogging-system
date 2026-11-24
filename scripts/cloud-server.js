@@ -33,12 +33,13 @@
  *   node scripts/cloud-server.js
  */
 
-const noflo = require("noflo");
-const path = require("node:path");
+import path from "node:path";
+import { createNodeModulesRegistry, loadGraphFile } from "@noflo/loader-node";
+import { createNetwork } from "@noflo/noflo";
 
 const GRAPH_PATH = process.env.CLOUD_GRAPH
   ? path.resolve(process.env.CLOUD_GRAPH)
-  : path.join(__dirname, "..", "graphs", "cloud-server.fbp");
+  : path.join(import.meta.dirname, "..", "graphs", "cloud-server.fbp");
 
 const REQUIRED_ENV = [
   "IMAP_USERNAME",
@@ -66,17 +67,21 @@ if (missing.length > 0) {
 
 console.log("cloud-server: loading graph %s", GRAPH_PATH);
 
-noflo.graph
-  .loadFile(GRAPH_PATH)
-  .then((graph) => noflo.createNetwork(graph, { subscribeGraph: false }))
+const registry = await createNodeModulesRegistry(
+  path.resolve(import.meta.dirname, ".."),
+);
+
+loadGraphFile(GRAPH_PATH)
+  .then((graph) => createNetwork(graph, { registry }))
   .then((network) => {
-    network.on("process-error", (err) => {
+    network.addEventListener("process-error", (event) => {
+      const err = event.detail;
       console.error(
         "[cloud-server] process-error:",
         err.error?.message || err.message,
       );
     });
-    network.on("end", () => {
+    network.addEventListener("end", () => {
       console.log("[cloud-server] network ended");
     });
     console.log("[cloud-server] network started");

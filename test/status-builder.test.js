@@ -1,13 +1,10 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
-
 // Load via createRequire so the test shares the component's CJS module
 // instance (same reasoning as the InReachSender/AlertComposer tests).
-const require = createRequire(import.meta.url);
-const statusModule = require("../components/StatusBuilder.js");
-const DatabaseHelper = require("../lib/DbHelper.js");
+import * as statusModule from "../components/StatusBuilder.js";
+import DatabaseHelper from "../lib/DbHelper.js";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 /**
  * Build a pre-populated in-memory DbHelper with the given pending state, then
@@ -47,7 +44,7 @@ function runStatus({ gates = 0, saildocs = 0, sequences = [] }) {
     );
     t.start()
       .then(() => {
-        t.outs.out.on("data", (data) => {
+        onData(t.outs.out, (data) => {
           if (received === null && data != null) {
             received = data;
             clearTimeout(timer);
@@ -112,7 +109,7 @@ describe("StatusBuilder component", () => {
     await new Promise((resolve, reject) => {
       t.start()
         .then(() => {
-          t.outs.out.on("data", (data) => {
+          onData(t.outs.out, (data) => {
             if (received === null && data != null) {
               received = data;
               clearTimeout(timer);

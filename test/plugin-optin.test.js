@@ -1,7 +1,10 @@
 // Smoketests for the blog encoding being opt-in (disabled by default)
 
-const { test } = require("node:test");
-const assert = require("node:assert");
+import assert from "node:assert";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { test } from "node:test";
 
 const mockApp = {
   debug: () => {},
@@ -41,10 +44,12 @@ function mockRes() {
 }
 
 async function setupPlugin(config) {
-  // Require a fresh module instance per test so plugin config doesn't leak
-  const path = require("node:path");
-  delete require.cache[path.resolve(__dirname, "..", "plugin", "index.js")];
-  const factory = require("../plugin/index.js");
+  // Import a fresh module instance per test so plugin config doesn't leak;
+  // the URL query busts the ESM module cache
+  const mod = await import(
+    new URL(`../plugin/index.js?t=${Date.now()}`, import.meta.url).href
+  );
+  const factory = mod.default;
   const plugin = factory(mockApp);
   await plugin.start(config);
   const { router, handlers } = mockRouter();
@@ -156,9 +161,6 @@ test("assemble endpoint rejects missing chunks array with 400", async () => {
 });
 
 test("assemble persists a GRIB and list returns it latest-first", async () => {
-  const fs = require("node:fs").promises;
-  const os = require("node:os");
-  const path = require("node:path");
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-"));
   try {
     const { handlers } = await setupPlugin({ gribStoragePath: dir });
@@ -220,9 +222,6 @@ test("assemble rejects bad GRIB magic with 422", async () => {
 });
 
 test("download sends the persisted .grb file", async () => {
-  const fs = require("node:fs").promises;
-  const os = require("node:os");
-  const path = require("node:path");
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-dl-"));
   try {
     const { handlers } = await setupPlugin({ gribStoragePath: dir });
@@ -272,9 +271,6 @@ test("download rejects an invalid id with 400", async () => {
 });
 
 test("download sets application/x-grib Content-Type for GRIB1", async () => {
-  const fs = require("node:fs").promises;
-  const os = require("node:os");
-  const path = require("node:path");
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-mime-"));
   try {
     const { handlers } = await setupPlugin({ gribStoragePath: dir });
@@ -304,9 +300,6 @@ test("download sets application/x-grib Content-Type for GRIB1", async () => {
 });
 
 test("download sets application/x-grib2 Content-Type for GRIB2", async () => {
-  const fs = require("node:fs").promises;
-  const os = require("node:os");
-  const path = require("node:path");
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-mime2-"));
   try {
     const { handlers } = await setupPlugin({ gribStoragePath: dir });
@@ -347,9 +340,6 @@ function makeGribBinary(payloadLen, edition = 2) {
 }
 
 test("upload via JSON gribBase64 persists and lists a GRIB", async () => {
-  const fs = require("node:fs").promises;
-  const os = require("node:os");
-  const path = require("node:path");
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-up1-"));
   try {
     const { handlers } = await setupPlugin({ gribStoragePath: dir });
@@ -387,9 +377,6 @@ test("upload via JSON gribBase64 persists and lists a GRIB", async () => {
 });
 
 test("upload via raw octet-stream body persists a GRIB", async () => {
-  const fs = require("node:fs").promises;
-  const os = require("node:os");
-  const path = require("node:path");
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-up2-"));
   try {
     const { handlers } = await setupPlugin({ gribStoragePath: dir });
@@ -413,9 +400,6 @@ test("upload via raw octet-stream body persists a GRIB", async () => {
 });
 
 test("upload dedups the same GRIB (same derived id)", async () => {
-  const fs = require("node:fs").promises;
-  const os = require("node:os");
-  const path = require("node:path");
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "plugin-grib-up3-"));
   try {
     const { handlers } = await setupPlugin({ gribStoragePath: dir });

@@ -1,5 +1,5 @@
-const { Component, failed, fail } = require("noflo-assembly");
-const { SAIL_DICT, decompressText } = require("../lib/BlogCodec.js");
+import { Component, fail, failed } from "@noflo/assembly";
+import { decompressText, SAIL_DICT } from "../lib/BlogCodec.js";
 
 /**
  * BlogDecoder - Decompresses, verifies, and *combines* blog post parts.
@@ -61,7 +61,7 @@ class BlogDecoder extends Component {
     this.pending = new Map();
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     if (!input.hasData("in")) {
       return;
     }
@@ -232,4 +232,4 @@ class BlogDecoder extends Component {
   }
 }
 
-exports.getComponent = () => new BlogDecoder();
+export const getComponent = () => new BlogDecoder();

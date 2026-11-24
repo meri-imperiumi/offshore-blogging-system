@@ -19,8 +19,8 @@
  * device_id will update the entry rather than create duplicates.
  */
 
-const DatabaseHelper = require("../lib/DbHelper");
-const fs = require("node:fs");
+import fs from "node:fs";
+import DatabaseHelper from "../lib/DbHelper.js";
 
 function usage() {
   console.error(

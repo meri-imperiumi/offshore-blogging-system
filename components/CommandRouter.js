@@ -1,5 +1,5 @@
-const { IP } = require("noflo");
-const { Component, failed } = require("noflo-assembly");
+import { Component, failed } from "@noflo/assembly";
+import { IP } from "@noflo/noflo";
 
 /**
  * CommandRouter - Routes sys:command payloads to appropriate handlers
@@ -45,7 +45,7 @@ class CommandRouter extends Component {
     this.routes = [];
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Process control port
     if (input.hasData("routes")) {
       const routesStr = input.getData("routes");
@@ -112,4 +112,4 @@ class CommandRouter extends Component {
   }
 }
 
-exports.getComponent = () => new CommandRouter();
+export const getComponent = () => new CommandRouter();

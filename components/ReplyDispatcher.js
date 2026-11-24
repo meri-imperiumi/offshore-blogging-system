@@ -1,4 +1,4 @@
-const { Component, failed, fail } = require("noflo-assembly");
+import { Component, fail, failed } from "@noflo/assembly";
 
 /**
  * ReplyDispatcher - Routes replies based on channel
@@ -33,7 +33,7 @@ class ReplyDispatcher extends Component {
     });
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     if (!input.hasData("in")) {
       return null;
     }
@@ -74,4 +74,4 @@ class ReplyDispatcher extends Component {
   }
 }
 
-exports.getComponent = () => new ReplyDispatcher();
+export const getComponent = () => new ReplyDispatcher();

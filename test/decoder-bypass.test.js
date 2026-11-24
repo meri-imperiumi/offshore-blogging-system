@@ -1,8 +1,8 @@
 // Tests for DecoderBypass component
 
-const { test } = require("node:test");
-const assert = require("node:assert");
-const { getComponent } = require("../components/DecoderBypass.js");
+import assert from "node:assert";
+import { test } from "node:test";
+import { getComponent } from "../components/DecoderBypass.js";
 
 test("DecoderBypass routes encoded messages to OUT", () => {
   const component = getComponent();

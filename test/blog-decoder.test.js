@@ -1,11 +1,11 @@
 // Tests for BlogDecoder: combining reassembled text + image parts into a
 // complete blog post.
 
-const { describe, it } = require("node:test");
-const assert = require("node:assert");
-const { getComponent } = require("../components/BlogDecoder.js");
-const { compressText, SAIL_DICT } = require("../lib/BlogCodec.js");
-const sharp = require("sharp");
+import assert from "node:assert";
+import { describe, it } from "node:test";
+import sharp from "sharp";
+import { getComponent } from "../components/BlogDecoder.js";
+import { compressText, SAIL_DICT } from "../lib/BlogCodec.js";
 
 // Build the assembly message BlogDecoder receives (i.e. MessageReassembler's
 // output for one completed partType sequence).

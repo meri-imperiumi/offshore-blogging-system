@@ -1,12 +1,9 @@
 import assert from "node:assert";
 import { rmSync } from "node:fs";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
+import * as reassemblerModule from "../components/MessageReassembler.js";
 import DatabaseHelper from "../lib/DbHelper.js";
-
-const require = createRequire(import.meta.url);
-const reassemblerModule = require("../components/MessageReassembler.js");
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 /**
  * Run a MessageReassembler scenario, resolving the first IP emitted on the
@@ -25,7 +22,7 @@ function runScenario({ msg, port = "out", timeout = 1500 }) {
     const collected = {};
     t.start()
       .then(() => {
-        t.outs[port].on("data", (data) => {
+        onData(t.outs[port], (data) => {
           collected[port] = data;
           finish(() => resolve({ data, collected }));
         });
@@ -136,12 +133,12 @@ describe("MessageReassembler", () => {
       const timer = setTimeout(() => finish(() => resolve(null)), 2000);
       t.start()
         .then(() => {
-          t.outs.out.on("data", (data) => {
+          onData(t.outs.out, (data) => {
             if (data && !data.failed) {
               finish(() => resolve(data));
             }
           });
-          t.outs.buffered.on("data", () => {
+          onData(t.outs.buffered, () => {
             // Continue receiving buffered chunks
           });
           // Send 3 chunks of a GRIB sequence
@@ -182,7 +179,7 @@ describe("MessageReassembler", () => {
       const timer = setTimeout(() => finish(() => resolve(null)), 2000);
       t.start()
         .then(() => {
-          t.outs.out.on("data", (d) => finish(() => resolve(d)));
+          onData(t.outs.out, (d) => finish(() => resolve(d)));
           t.ins.dbpath.send(DB);
           // 1) Buffer a single chunk of a 3-part sequence (not complete).
           t.ins.in.send({

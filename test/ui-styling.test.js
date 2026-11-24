@@ -3,15 +3,15 @@
 // variables, flat geometry, theme classes, day/night modes and 48px touch
 // targets. These tests parse the static webapp files to catch regressions.
 
-const { describe, it } = require("node:test");
-const assert = require("node:assert");
-const fs = require("node:fs");
-const path = require("node:path");
+import assert from "node:assert";
+import fs from "node:fs";
+import path from "node:path";
+import { describe, it } from "node:test";
 
-const htmlPath = path.join(__dirname, "..", "public", "index.html");
+const htmlPath = path.join(import.meta.dirname, "..", "public", "index.html");
 const html = fs.readFileSync(htmlPath, "utf8");
 const appJs = fs.readFileSync(
-  path.join(__dirname, "..", "public", "app.js"),
+  path.join(import.meta.dirname, "..", "public", "app.js"),
   "utf8",
 );
 

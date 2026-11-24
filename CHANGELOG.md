@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Migrated to NoFlo 2.x: `noflo`/`noflo-assembly`/`noflo-core` replaced by `@noflo/noflo`, `@noflo/assembly`, `@noflo/core` (2.0.0-alpha line)
+- The package is now ESM (`"type": "module"`). The Signal K plugin entry is a default export, loaded by Signal K's `require()` of ESM (Node ≥ 20.19 / 22) or its `import()` fallback
+- Component loading in scripts and tests goes through `@noflo/loader-node`'s registry; the multi-port assembly hook is renamed `handle()` → `processMessage()`; network events use EventTarget listeners; graph entities use definition-object APIs and frozen entities
+
+### Fixed
+
+- Duplicate `ReplyDispatcher SMTP -> ErrorLogger` edge in cloud-server.fbp — a latent bug that NoFlo 2.x graph loading rejects
+
+### Removed
+
+- `noflo-wrapper` dev dependency, replaced by a local test harness helper
+
 ## [0.4.0] - 2026-11-24
 
 ### Added

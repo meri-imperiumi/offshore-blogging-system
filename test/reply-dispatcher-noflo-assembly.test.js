@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 describe("ReplyDispatcher noflo-assembly pattern (no error port)", () => {
   it("routes failed messages to SMTP port for ErrorLogger", async () => {
@@ -20,13 +20,14 @@ describe("ReplyDispatcher noflo-assembly pattern (no error port)", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.smtp.on("data", (data) => {
+      onData(t.outs.smtp, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.smtp.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.smtp, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data on SMTP");
@@ -65,13 +66,14 @@ describe("ReplyDispatcher noflo-assembly pattern (no error port)", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.smtp.on("data", (data) => {
+      onData(t.outs.smtp, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.smtp.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.smtp, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data on SMTP");
@@ -113,13 +115,14 @@ describe("ReplyDispatcher noflo-assembly pattern (no error port)", () => {
       let received = null;
       let receivedDisconnect = false;
 
-      t.outs.smtp.on("data", (data) => {
+      onData(t.outs.smtp, (data) => {
         if (!received) {
           received = data;
         }
       });
 
-      t.outs.smtp.on("disconnect", () => {
+      // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+      onData(t.outs.smtp, (data) => {
         receivedDisconnect = true;
         try {
           assert.ok(received, "Should have received data on SMTP");

@@ -1,9 +1,7 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
 
-const require = createRequire(import.meta.url);
-const ImapAckerModule = require("../components/ImapAcker.js");
+import * as ImapAckerModule from "../components/ImapAcker.js";
 
 describe("ImapAcker component", () => {
   it("exists and exports getComponent", () => {

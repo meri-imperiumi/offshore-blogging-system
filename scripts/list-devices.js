@@ -10,8 +10,8 @@
  *   CLOUD_DB_PATH  SQLite database path (required)
  */
 
-const DatabaseHelper = require("../lib/DbHelper");
-const fs = require("node:fs");
+import fs from "node:fs";
+import DatabaseHelper from "../lib/DbHelper.js";
 
 function main() {
   const dbPath = process.env.CLOUD_DB_PATH;

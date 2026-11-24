@@ -8,13 +8,13 @@
 //     warranted) from hasChanges()'s "working tree is dirty" (which is always
 //     false after a merge commits its result).
 
-const { describe, it, after } = require("node:test");
-const assert = require("node:assert");
-const fsp = require("node:fs").promises;
-const path = require("node:path");
-const os = require("node:os");
-const { execFile } = require("node:child_process");
-const GitHelper = require("../lib/GitHelper.js");
+import assert from "node:assert";
+import { execFile } from "node:child_process";
+import fsp from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { after, describe, it } from "node:test";
+import GitHelper from "../lib/GitHelper.js";
 
 const dirs = [];
 

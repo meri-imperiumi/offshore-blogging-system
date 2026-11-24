@@ -1,6 +1,6 @@
-const { Component } = require("noflo-assembly");
-const { ImapFlow } = require("imapflow");
-const libqp = require("libqp");
+import { Component } from "@noflo/assembly";
+import { ImapFlow } from "imapflow";
+import libqp from "libqp";
 
 /**
  * Parse a raw email headers Buffer into a Map of lowercased header name -> value.
@@ -65,7 +65,7 @@ function parseHeaders(raw) {
  * `imapUid` carried on each emitted email).
  *
  * Config (host, port, username, password, mailbox) arrives as IIPs on control
- * ports; they are buffered and read when the `in` bang triggers handle().
+ * ports; they are buffered and read when the `in` bang triggers processMessage().
  */
 class ImapFetcher extends Component {
   constructor() {
@@ -120,7 +120,7 @@ class ImapFetcher extends Component {
     this.imapConfig = {};
   }
 
-  handle(input, output, context) {
+  processMessage(input, output, context) {
     // Read config from control ports (buffered from IIPs)
     if (input.hasData("host")) {
       this.imapConfig.host = input.getData("host");
@@ -326,4 +326,4 @@ class ImapFetcher extends Component {
   }
 }
 
-exports.getComponent = () => new ImapFetcher();
+export const getComponent = () => new ImapFetcher();

@@ -1,4 +1,4 @@
-const { Component, failed } = require("noflo-assembly");
+import { Component, failed } from "@noflo/assembly";
 
 /**
  * InReachReceiver - Parse InReach lo-fi message format from email bodies.
@@ -55,7 +55,7 @@ class InReachReceiver extends Component {
     });
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     if (!input.hasData("in")) {
       return;
     }
@@ -246,4 +246,4 @@ class InReachReceiver extends Component {
   }
 }
 
-exports.getComponent = () => new InReachReceiver();
+export const getComponent = () => new InReachReceiver();

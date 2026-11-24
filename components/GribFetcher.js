@@ -1,6 +1,6 @@
-const { Component, failed, fail } = require("noflo-assembly");
-const DatabaseHelper = require("../lib/DbHelper");
-const crypto = require("node:crypto");
+import crypto from "node:crypto";
+import { Component, fail, failed } from "@noflo/assembly";
+import DatabaseHelper from "../lib/DbHelper.js";
 
 /**
  * GribFetcher - Fetches weather GRIB data
@@ -42,7 +42,7 @@ class GribFetcher extends Component {
     this.dbPath = ":memory:";
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Process control ports
     if (input.hasData("dbpath")) {
       this.dbPath = input.getData("dbpath");
@@ -227,4 +227,4 @@ class GribFetcher extends Component {
   }
 }
 
-exports.getComponent = () => new GribFetcher();
+export const getComponent = () => new GribFetcher();

@@ -37,9 +37,6 @@
  */
 
 import { rmSync } from "node:fs";
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
 
 // ---------------------------------------------------------------------------
 // 1. Validate environment
@@ -100,7 +97,9 @@ console.log("");
 // 3. Database (file-based so GribFetcher and this script share state)
 // ---------------------------------------------------------------------------
 rmSync(DB_PATH, { force: true });
-const DatabaseHelper = require("../lib/DbHelper.js");
+
+import DatabaseHelper from "../lib/DbHelper.js";
+
 const db = new DatabaseHelper(DB_PATH);
 db.initialize();
 
@@ -116,30 +115,48 @@ const assemblyMsg = {
   payload: `send ${SAILDOCS_EMAIL}:${SAILDOCS_QUERY}`,
 };
 
+import path from "node:path";
+import { createNodeModulesRegistry } from "@noflo/loader-node";
 // ---------------------------------------------------------------------------
 // 4. Build NoFlo graph
 // ---------------------------------------------------------------------------
-const noflo = require("noflo");
-const graph = noflo.graph.createGraph("saildocs");
+import { createNetwork, GraphModel } from "@noflo/noflo";
+
+const graph = new GraphModel({ name: "saildocs" });
 
 // --- Send path ---
-graph.addNode("GribFetcher", "GribFetcher");
-graph.addNode("SmtpSender", "SmtpResponder");
+graph.addNode({ entity_id: "GribFetcher", component: "GribFetcher" });
+graph.addNode({ entity_id: "SmtpSender", component: "SmtpResponder" });
 // core/Drop absorbs the out/error IPs so the sockets exist and the script
 // can listen on them. Without a downstream connection, NoFlo drops the data
 // silently and SMTP failures go unnoticed.
-graph.addNode("SmtpDrop", "core/Drop");
-graph.addNode("SmtpErrDrop", "core/Drop");
-graph.addEdge("GribFetcher", "outbox", "SmtpSender", "in");
-graph.addEdge("SmtpSender", "out", "SmtpDrop", "in");
-graph.addEdge("SmtpSender", "error", "SmtpErrDrop", "in");
+graph.addNode({ entity_id: "SmtpDrop", component: "core/Drop" });
+graph.addNode({ entity_id: "SmtpErrDrop", component: "core/Drop" });
+graph.addEdge({
+  from: { node: "GribFetcher", port: "outbox" },
+  to: { node: "SmtpSender", port: "in" },
+});
+graph.addEdge({
+  from: { node: "SmtpSender", port: "out" },
+  to: { node: "SmtpDrop", port: "in" },
+});
+graph.addEdge({
+  from: { node: "SmtpSender", port: "error" },
+  to: { node: "SmtpErrDrop", port: "in" },
+});
 
 // --- Receive path ---
-graph.addNode("Timer", "core/RunInterval");
-graph.addNode("Fetcher", "ImapFetcher");
-graph.addNode("Acker", "ImapAcker");
-graph.addEdge("Timer", "out", "Fetcher", "in");
-graph.addEdge("Fetcher", "out", "Acker", "in");
+graph.addNode({ entity_id: "Timer", component: "core/RunInterval" });
+graph.addNode({ entity_id: "Fetcher", component: "ImapFetcher" });
+graph.addNode({ entity_id: "Acker", component: "ImapAcker" });
+graph.addEdge({
+  from: { node: "Timer", port: "out" },
+  to: { node: "Fetcher", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Fetcher", port: "out" },
+  to: { node: "Acker", port: "in" },
+});
 
 // --- IIPs: SmtpSender control ports (MUST be before GribFetcher's data) ---
 // SmtpResponder's handle() reads control ports with hasData(), falling back
@@ -147,32 +164,68 @@ graph.addEdge("Fetcher", "out", "Acker", "in");
 // data reaches SmtpSender.in before the smtp_port IIP, SmtpSender uses the
 // wrong port (587 plaintext instead of 465 TLS) and the send fails with 554.
 // NoFlo delivers IIPs in addInitial order, so add control ports first.
-graph.addInitial(process.env.SMTP_HOST, "SmtpSender", "smtp_host");
-graph.addInitial(SMTP_PORT, "SmtpSender", "smtp_port");
-graph.addInitial(process.env.SMTP_USERNAME, "SmtpSender", "smtp_user");
-graph.addInitial(process.env.SMTP_PASSWORD, "SmtpSender", "smtp_pass");
+graph.addIIP({
+  to: { node: "SmtpSender", port: "smtp_host" },
+  data: process.env.SMTP_HOST,
+});
+graph.addIIP({
+  to: { node: "SmtpSender", port: "smtp_port" },
+  data: SMTP_PORT,
+});
+graph.addIIP({
+  to: { node: "SmtpSender", port: "smtp_user" },
+  data: process.env.SMTP_USERNAME,
+});
+graph.addIIP({
+  to: { node: "SmtpSender", port: "smtp_pass" },
+  data: process.env.SMTP_PASSWORD,
+});
 
 // --- IIPs: GribFetcher (data IIPs last, so SmtpSender controls arrive first) ---
-graph.addInitial(DB_PATH, "GribFetcher", "dbpath");
-graph.addInitial(assemblyMsg, "GribFetcher", "in");
+graph.addIIP({ to: { node: "GribFetcher", port: "dbpath" }, data: DB_PATH });
+graph.addIIP({ to: { node: "GribFetcher", port: "in" }, data: assemblyMsg });
 
 // --- IIPs: ImapFetcher ---
-graph.addInitial(process.env.IMAP_HOST, "Fetcher", "host");
-graph.addInitial(IMAP_PORT, "Fetcher", "port");
-graph.addInitial(process.env.IMAP_USERNAME, "Fetcher", "username");
-graph.addInitial(process.env.IMAP_PASSWORD, "Fetcher", "password");
-graph.addInitial(process.env.IMAP_MAILBOX || "INBOX", "Fetcher", "mailbox");
+graph.addIIP({
+  to: { node: "Fetcher", port: "host" },
+  data: process.env.IMAP_HOST,
+});
+graph.addIIP({ to: { node: "Fetcher", port: "port" }, data: IMAP_PORT });
+graph.addIIP({
+  to: { node: "Fetcher", port: "username" },
+  data: process.env.IMAP_USERNAME,
+});
+graph.addIIP({
+  to: { node: "Fetcher", port: "password" },
+  data: process.env.IMAP_PASSWORD,
+});
+graph.addIIP({
+  to: { node: "Fetcher", port: "mailbox" },
+  data: process.env.IMAP_MAILBOX || "INBOX",
+});
 
 // --- IIPs: ImapAcker (same IMAP config) ---
-graph.addInitial(process.env.IMAP_HOST, "Acker", "host");
-graph.addInitial(IMAP_PORT, "Acker", "port");
-graph.addInitial(process.env.IMAP_USERNAME, "Acker", "username");
-graph.addInitial(process.env.IMAP_PASSWORD, "Acker", "password");
-graph.addInitial(process.env.IMAP_MAILBOX || "INBOX", "Acker", "mailbox");
+graph.addIIP({
+  to: { node: "Acker", port: "host" },
+  data: process.env.IMAP_HOST,
+});
+graph.addIIP({ to: { node: "Acker", port: "port" }, data: IMAP_PORT });
+graph.addIIP({
+  to: { node: "Acker", port: "username" },
+  data: process.env.IMAP_USERNAME,
+});
+graph.addIIP({
+  to: { node: "Acker", port: "password" },
+  data: process.env.IMAP_PASSWORD,
+});
+graph.addIIP({
+  to: { node: "Acker", port: "mailbox" },
+  data: process.env.IMAP_MAILBOX || "INBOX",
+});
 
 // --- IIPs: Timer ---
-graph.addInitial(POLL_INTERVAL, "Timer", "interval");
-graph.addInitial(true, "Timer", "start");
+graph.addIIP({ to: { node: "Timer", port: "interval" }, data: POLL_INTERVAL });
+graph.addIIP({ to: { node: "Timer", port: "start" }, data: true });
 
 // ---------------------------------------------------------------------------
 // 5. State
@@ -190,7 +243,7 @@ let finished = false;
 // The GRIB-from-MIME extraction logic lives in lib/GribMime.js and is shared
 // with components/SaildocsMatcher.js (the production graph path) so the two
 // can't drift apart.
-const { extractGribFromMime } = require("../lib/GribMime.js");
+import { extractGribFromMime } from "../lib/GribMime.js";
 
 /**
  * Validate a Saildocs response email.
@@ -249,12 +302,16 @@ function validateSaildocsResponse(email) {
 // ---------------------------------------------------------------------------
 // 7. Start network
 // ---------------------------------------------------------------------------
-noflo
-  .createNetwork(graph, { subscribeGraph: false })
+const registry = await createNodeModulesRegistry(
+  path.resolve(import.meta.dirname, ".."),
+);
+
+createNetwork(graph, { registry })
   .then((network) => {
     console.log("=== Network started ===");
 
-    network.on("process-error", (error) => {
+    network.addEventListener("process-error", (event) => {
+      const error = event.detail;
       console.error("[Process Error]:", error.error?.message || error.message);
     });
 
@@ -279,7 +336,8 @@ noflo
     // network-level 'ip' event fires for every packet on every socket,
     // regardless of direction — this is the reliable way to observe flow.
     // The same fix should be applied to ping-pong-runner.js.
-    network.on("ip", (packet) => {
+    network.addEventListener("ip", (event) => {
+      const packet = event.detail;
       if (finished || packet.type !== "data") return;
       const from = packet.socket.from
         ? `${packet.socket.from.process.id}.${packet.socket.from.port}`

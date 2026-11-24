@@ -1,10 +1,8 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
 
 // Load component via createRequire so the test shares the component's CJS module instance
-const require = createRequire(import.meta.url);
-const ImapFetcherModule = require("../components/ImapFetcher.js");
+import * as ImapFetcherModule from "../components/ImapFetcher.js";
 
 describe("ImapFetcher component", () => {
   it("exists and exports getComponent", () => {

@@ -1,11 +1,8 @@
 import assert from "node:assert";
 import { rmSync } from "node:fs";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
-
-const require = createRequire(import.meta.url);
-const _gateModule = require("../components/GribGate.js");
+import * as _gateModule from "../components/GribGate.js";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 const DB_PATH = "/tmp/grib-gate-test.db";
 
@@ -32,10 +29,11 @@ function runScenario({ msg, controls = {}, port = "out", timeout = 1500 }) {
         // Capture process errors — a bare output.sendDone(msg) on a
         // component with >1 out port throws "Port must be specified for
         // sending output", which we must NOT see.
-        t.network.on("process-error", (err) => {
+        t.network.addEventListener("process-error", (event) => {
+          const err = event.detail;
           errors.push(err.error?.message || err.message);
         });
-        t.outs[port]?.on("data", (data) => {
+        onData(t.outs[port], (data) => {
           collected[port] = data;
           finish(() => resolve({ data, collected, errors }));
         });

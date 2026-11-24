@@ -5,9 +5,9 @@
 // GitPublisher (same object reference); mutating msg.payload here would
 // corrupt GitPublisher's async read of the blog data object.
 
-const { describe, it } = require("node:test");
-const assert = require("node:assert");
-const { getComponent } = require("../components/BlogAckBuilder.js");
+import assert from "node:assert";
+import { describe, it } from "node:test";
+import { getComponent } from "../components/BlogAckBuilder.js";
 
 function runHandle(component, msg) {
   return new Promise((resolve) => {

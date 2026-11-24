@@ -24,10 +24,6 @@
  * write just the markdown file.
  */
 
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
-
 // Validate environment variables
 const requiredEnv = [
   "IMAP_HOST",
@@ -67,7 +63,8 @@ if (process.env.TEST_DEVICE_ID) {
 console.log("");
 
 // Initialize database
-const DatabaseHelper = require("../lib/DbHelper.js");
+import DatabaseHelper from "../lib/DbHelper.js";
+
 const db = new DatabaseHelper(":memory:");
 db.initialize();
 
@@ -86,99 +83,172 @@ if (process.env.TEST_DEVICE_ID && process.env.TEST_IDENTITY_HASH) {
 // Output directory where decoded blog posts (markdown + watermarked images)
 // are written to disk. Plain directory (not a git repo), so GitPublisher
 // skips commit/push and just writes files — disk writing only for now.
-const fs = require("node:fs");
-const path = require("node:path");
-const os = require("node:os");
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "obs-blog-out-"));
 console.log(`Writing decoded blog posts to: ${outputDir}`);
 console.log("");
 
+import { createNodeModulesRegistry } from "@noflo/loader-node";
 // Load NoFlo
-const noflo = require("noflo");
+import { createNetwork, GraphModel } from "@noflo/noflo";
 
 // Create graph programmatically
-const graph = noflo.graph.createGraph("inreach-receiver-e2e");
+const graph = new GraphModel({ name: "inreach-receiver-e2e" });
 
 // Add nodes
-graph.addNode("Timer", "core/RunInterval");
-graph.addNode("Fetcher", "ImapFetcher");
-graph.addNode("Verifier", "AuthVerifier");
-graph.addNode("Receiver", "InReachReceiver");
-graph.addNode("Reassembler", "MessageReassembler");
-graph.addNode("Decoder", "BlogDecoder");
-graph.addNode("AckBuilder", "BlogAckBuilder");
-graph.addNode("Sender", "InReachSender");
-graph.addNode("Publisher", "GitPublisher");
-graph.addNode("Acker", "ImapAcker");
+graph.addNode({ entity_id: "Timer", component: "core/RunInterval" });
+graph.addNode({ entity_id: "Fetcher", component: "ImapFetcher" });
+graph.addNode({ entity_id: "Verifier", component: "AuthVerifier" });
+graph.addNode({ entity_id: "Receiver", component: "InReachReceiver" });
+graph.addNode({ entity_id: "Reassembler", component: "MessageReassembler" });
+graph.addNode({ entity_id: "Decoder", component: "BlogDecoder" });
+graph.addNode({ entity_id: "AckBuilder", component: "BlogAckBuilder" });
+graph.addNode({ entity_id: "Sender", component: "InReachSender" });
+graph.addNode({ entity_id: "Publisher", component: "GitPublisher" });
+graph.addNode({ entity_id: "Acker", component: "ImapAcker" });
 
 // core/ReadEnv nodes for IMAP credentials
-graph.addNode("HostEnv", "core/ReadEnv");
-graph.addNode("PortEnv", "core/ReadEnv");
-graph.addNode("UserEnv", "core/ReadEnv");
-graph.addNode("PassEnv", "core/ReadEnv");
-graph.addNode("MailboxEnv", "core/ReadEnv");
+graph.addNode({ entity_id: "HostEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "PortEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "UserEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "PassEnv", component: "core/ReadEnv" });
+graph.addNode({ entity_id: "MailboxEnv", component: "core/ReadEnv" });
 
 // Add edges — main pipeline
-graph.addEdge("Timer", "out", "Fetcher", "in");
-graph.addEdge("Fetcher", "out", "Verifier", "in");
-graph.addEdge("Verifier", "out", "Receiver", "in");
-graph.addEdge("Receiver", "out", "Reassembler", "in");
-graph.addEdge("Reassembler", "out", "Decoder", "in");
+graph.addEdge({
+  from: { node: "Timer", port: "out" },
+  to: { node: "Fetcher", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Fetcher", port: "out" },
+  to: { node: "Verifier", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Verifier", port: "out" },
+  to: { node: "Receiver", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Receiver", port: "out" },
+  to: { node: "Reassembler", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Reassembler", port: "out" },
+  to: { node: "Decoder", port: "in" },
+});
 // Buffered (incomplete) chunks go straight to ImapAcker so their emails
 // are marked as seen — each chunk's delivery job is done once it's buffered.
-graph.addEdge("Reassembler", "buffered", "Acker", "in");
+graph.addEdge({
+  from: { node: "Reassembler", port: "buffered" },
+  to: { node: "Acker", port: "in" },
+});
 // A complete part that BlogDecoder is still holding while waiting for its
 // siblings (e.g. text arrived, images not yet) is acked here too — its
 // email delivered a valid complete part, so it shouldn't be re-fetched.
-graph.addEdge("Decoder", "buffered", "Acker", "in");
-graph.addEdge("Decoder", "out", "AckBuilder", "in");
+graph.addEdge({
+  from: { node: "Decoder", port: "buffered" },
+  to: { node: "Acker", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Decoder", port: "out" },
+  to: { node: "AckBuilder", port: "in" },
+});
 // Decoder also feeds GitPublisher, which writes the post + watermarked
 // image(s) to the output directory (disk writing only, no git ops).
-graph.addEdge("Decoder", "out", "Publisher", "in");
-graph.addEdge("AckBuilder", "out", "Sender", "in");
-graph.addEdge("Sender", "out", "Acker", "in");
+graph.addEdge({
+  from: { node: "Decoder", port: "out" },
+  to: { node: "Publisher", port: "in" },
+});
+graph.addEdge({
+  from: { node: "AckBuilder", port: "out" },
+  to: { node: "Sender", port: "in" },
+});
+graph.addEdge({
+  from: { node: "Sender", port: "out" },
+  to: { node: "Acker", port: "in" },
+});
 // GitPublisher's confirmation drains to ImapAcker.
-graph.addEdge("Publisher", "out", "Acker", "in");
+graph.addEdge({
+  from: { node: "Publisher", port: "out" },
+  to: { node: "Acker", port: "in" },
+});
 
 // ReadEnv -> Fetcher + Acker
-graph.addEdge("HostEnv", "out", "Fetcher", "host");
-graph.addEdge("HostEnv", "out", "Acker", "host");
-graph.addEdge("PortEnv", "out", "Fetcher", "port");
-graph.addEdge("PortEnv", "out", "Acker", "port");
-graph.addEdge("UserEnv", "out", "Fetcher", "username");
-graph.addEdge("UserEnv", "out", "Acker", "username");
-graph.addEdge("PassEnv", "out", "Fetcher", "password");
-graph.addEdge("PassEnv", "out", "Acker", "password");
-graph.addEdge("MailboxEnv", "out", "Fetcher", "mailbox");
-graph.addEdge("MailboxEnv", "out", "Acker", "mailbox");
+graph.addEdge({
+  from: { node: "HostEnv", port: "out" },
+  to: { node: "Fetcher", port: "host" },
+});
+graph.addEdge({
+  from: { node: "HostEnv", port: "out" },
+  to: { node: "Acker", port: "host" },
+});
+graph.addEdge({
+  from: { node: "PortEnv", port: "out" },
+  to: { node: "Fetcher", port: "port" },
+});
+graph.addEdge({
+  from: { node: "PortEnv", port: "out" },
+  to: { node: "Acker", port: "port" },
+});
+graph.addEdge({
+  from: { node: "UserEnv", port: "out" },
+  to: { node: "Fetcher", port: "username" },
+});
+graph.addEdge({
+  from: { node: "UserEnv", port: "out" },
+  to: { node: "Acker", port: "username" },
+});
+graph.addEdge({
+  from: { node: "PassEnv", port: "out" },
+  to: { node: "Fetcher", port: "password" },
+});
+graph.addEdge({
+  from: { node: "PassEnv", port: "out" },
+  to: { node: "Acker", port: "password" },
+});
+graph.addEdge({
+  from: { node: "MailboxEnv", port: "out" },
+  to: { node: "Fetcher", port: "mailbox" },
+});
+graph.addEdge({
+  from: { node: "MailboxEnv", port: "out" },
+  to: { node: "Acker", port: "mailbox" },
+});
 
 // Add IIPs
-graph.addInitial("IMAP_HOST", "HostEnv", "key");
-graph.addInitial("IMAP_PORT", "PortEnv", "key");
-graph.addInitial("IMAP_USERNAME", "UserEnv", "key");
-graph.addInitial("IMAP_PASSWORD", "PassEnv", "key");
-graph.addInitial("IMAP_MAILBOX", "MailboxEnv", "key");
-graph.addInitial(15000, "Timer", "interval");
-graph.addInitial(true, "Timer", "start");
-graph.addInitial(process.env.INREACH_REPLY_ADDRESS, "Sender", "replyaddress");
-graph.addInitial(5000, "Sender", "delayms");
-graph.addInitial(outputDir, "Publisher", "repo_path");
-graph.addInitial(false, "Publisher", "push");
+graph.addIIP({ to: { node: "HostEnv", port: "key" }, data: "IMAP_HOST" });
+graph.addIIP({ to: { node: "PortEnv", port: "key" }, data: "IMAP_PORT" });
+graph.addIIP({ to: { node: "UserEnv", port: "key" }, data: "IMAP_USERNAME" });
+graph.addIIP({ to: { node: "PassEnv", port: "key" }, data: "IMAP_PASSWORD" });
+graph.addIIP({ to: { node: "MailboxEnv", port: "key" }, data: "IMAP_MAILBOX" });
+graph.addIIP({ to: { node: "Timer", port: "interval" }, data: 15000 });
+graph.addIIP({ to: { node: "Timer", port: "start" }, data: true });
+graph.addIIP({
+  to: { node: "Sender", port: "replyaddress" },
+  data: process.env.INREACH_REPLY_ADDRESS,
+});
+graph.addIIP({ to: { node: "Sender", port: "delayms" }, data: 5000 });
+graph.addIIP({ to: { node: "Publisher", port: "repo_path" }, data: outputDir });
+graph.addIIP({ to: { node: "Publisher", port: "push" }, data: false });
 
-noflo
-  .createNetwork(graph, {
-    subscribeGraph: false,
-  })
+const registry = await createNodeModulesRegistry(
+  path.resolve(import.meta.dirname, ".."),
+);
+
+createNetwork(graph, { registry })
   .then((network) => {
     console.log("=== Network started ===");
     console.log("");
 
-    network.on("process-error", (error) => {
+    network.addEventListener("process-error", (event) => {
+      const error = event.detail;
       console.error("[Process Error]:", error.error?.message || error.message);
     });
 
     // Inject database into AuthVerifier for device lookup
-    const verifierProc = network.getNode("Verifier");
+    const verifierProc = network.processes.Verifier;
     if (verifierProc?.component) {
       verifierProc.component.db = db;
       console.log("[Setup] Injected DB into AuthVerifier");
@@ -190,7 +260,8 @@ noflo
     const decodedSeen = new WeakSet();
 
     // Monitor packet flow via the network 'ip' event
-    network.on("ip", (packet) => {
+    network.addEventListener("ip", (event) => {
+      const packet = event.detail;
       if (packet.type !== "data") return;
       const from = packet.socket.from
         ? `${packet.socket.from.process.id}.${packet.socket.from.port}`

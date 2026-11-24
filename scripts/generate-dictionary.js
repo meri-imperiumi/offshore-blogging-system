@@ -27,10 +27,10 @@
  * Against: components/BlogDecoder.js (uses this dictionary)
  */
 
-const fs = require("node:fs").promises;
-const path = require("node:path");
-const zlib = require("node:zlib");
-const { createHash } = require("node:crypto");
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import zlib from "node:zlib";
 
 /**
  * Extract metadata from front matter

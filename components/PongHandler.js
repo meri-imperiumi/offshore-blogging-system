@@ -1,4 +1,4 @@
-const { Component } = require("noflo-assembly");
+import { Component } from "@noflo/assembly";
 
 /**
  * PongHandler - Simple PING/PONG response handler
@@ -40,4 +40,4 @@ class PongHandler extends Component {
   }
 }
 
-exports.getComponent = () => new PongHandler();
+export const getComponent = () => new PongHandler();

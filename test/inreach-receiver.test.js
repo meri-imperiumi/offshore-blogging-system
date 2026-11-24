@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 /**
  * Run an InReachReceiver scenario, resolving the first IP emitted on `out`
@@ -20,7 +20,7 @@ function runScenario({ msg, port = "out", timeout = 1500 }) {
     const collected = {};
     t.start()
       .then(() => {
-        t.outs[port].on("data", (data) => {
+        onData(t.outs[port], (data) => {
           collected[port] = data;
           finish(() => resolve({ data, collected }));
         });

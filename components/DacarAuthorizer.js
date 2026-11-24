@@ -1,5 +1,5 @@
-const { Component, failed, fail } = require("noflo-assembly");
-const { execFile } = require("node:child_process");
+import { execFile } from "node:child_process";
+import { Component, fail, failed } from "@noflo/assembly";
 
 /**
  * DacarAuthorizer - Authorization via the `dacar` CLI's local file store.
@@ -155,7 +155,7 @@ class DacarAuthorizer extends Component {
     this.di = di;
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     if (input.hasData("permission")) {
       this.currentPermission = input.getData("permission");
     }
@@ -230,5 +230,5 @@ class DacarAuthorizer extends Component {
   }
 }
 
-exports.getComponent = () => new DacarAuthorizer();
-exports.di = di;
+export const getComponent = () => new DacarAuthorizer();
+export { di };

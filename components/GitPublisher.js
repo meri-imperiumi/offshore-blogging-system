@@ -1,8 +1,8 @@
-const { Component, fail, fork } = require("noflo-assembly");
-const GitHelper = require("../lib/GitHelper");
-const fs = require("node:fs");
-const path = require("node:path");
-const sharp = require("sharp");
+import fs from "node:fs";
+import path from "node:path";
+import { Component, fail, fork } from "@noflo/assembly";
+import sharp from "sharp";
+import GitHelper from "../lib/GitHelper.js";
 
 /**
  * GitPublisher - Writes a decoded, complete blog post to a git repository.
@@ -88,7 +88,7 @@ class GitPublisher extends Component {
     this.watermarkText = "lo-fi preview";
   }
 
-  handle(input, output) {
+  processMessage(input, output) {
     // Process control ports
     if (input.hasData("repo_path")) {
       this.repoPath = input.getData("repo_path");
@@ -149,8 +149,8 @@ class GitPublisher extends Component {
       return output.sendDone(msg);
     }
 
-    // Delegate async work to a helper so handle() returns undefined (not a
-    // Promise). If handle() were async, NoFlo would call
+    // Delegate async work to a helper so processMessage() returns undefined (not a
+    // Promise). If processMessage() were async, NoFlo would call
     // output.sendDone(resolvedValue) on resolve, causing a duplicate send.
     this._doPublish(msg, blogData, output);
   }
@@ -411,4 +411,4 @@ class GitPublisher extends Component {
   }
 }
 
-exports.getComponent = () => new GitPublisher();
+export const getComponent = () => new GitPublisher();

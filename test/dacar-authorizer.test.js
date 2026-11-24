@@ -5,16 +5,13 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-
-// Load component via createRequire so the test shares the component's CJS
-// module instance (same reasoning as the AuthVerifier/InReachSender tests).
-const require = createRequire(import.meta.url);
-const mod = require("../components/DacarAuthorizer.js");
-const { failed, fail } = require("noflo-assembly");
+import { fail, failed } from "@noflo/assembly";
+import * as mod from "../components/DacarAuthorizer.js";
 
 // Resolve the bundled `dacar` CLI for the real shell-out test. The package
 // restricts its `exports` map, so resolve the package root via package.json
 // (which IS exported) and reach the bin symlink on the filesystem directly.
+const require = createRequire(import.meta.url);
 const pkgDir = path.dirname(require.resolve("@reticulum/dacar/package.json"));
 const dacarBin = path.join(pkgDir, "..", "..", ".bin", "dacar");
 const dacarAvailable = existsSync(dacarBin);

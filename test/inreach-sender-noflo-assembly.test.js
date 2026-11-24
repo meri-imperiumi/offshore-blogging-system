@@ -1,10 +1,7 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
-
-const require = createRequire(import.meta.url);
-const senderModule = require("../components/InReachSender.js");
+import * as senderModule from "../components/InReachSender.js";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 const REPLY_URL =
   "https://explore.garmin.com/TextMessage/TxtMsg?extId=abc123guid&adr=someaddr";
@@ -43,12 +40,14 @@ function runScenario({ client, port, msg, controls = {}, timeout = 3000 }) {
     t.start()
       .then(() => {
         let received = null;
-        t.outs[port].on("data", (data) => {
+        onData(t.outs[port], (data) => {
           if (received === null && data != null) {
             received = data;
           }
         });
-        t.outs[port].on("disconnect", () => {
+        // NoFlo 2.x removes per-burst auto-disconnect: settle on first data IP
+
+        onData(t.outs[port], (data) => {
           if (received !== null) {
             finish(() =>
               resolve({ received, sends: client ? client.sends : null }),

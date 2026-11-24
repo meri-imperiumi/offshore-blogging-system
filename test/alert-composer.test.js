@@ -1,11 +1,10 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
-import Wrapper from "noflo-wrapper";
+import * as AlertComposerModule from "../components/AlertComposer.js";
+import Wrapper, { onData } from "./helpers/wrapper.js";
 
 // Load the component via createRequire so the test shares the component's CJS
 // module instance (noflo's ComponentLoader requires by absolute path).
-const require = createRequire(import.meta.url);
 
 // Build a failed assembly message carrying an InReachError-shaped error.
 function failedMsg({ code, message, intent = "GRIB", identityHash = "id-1" }) {
@@ -59,7 +58,7 @@ function runOnce({ msg, controls = {}, quietMs = 3000, timeout = 3000 }) {
     );
     t.start()
       .then(() => {
-        t.outs.out.on("data", (data) => {
+        onData(t.outs.out, (data) => {
           if (received === null && data != null) {
             received = data;
             finish(() => resolve({ received }));
@@ -113,7 +112,7 @@ function runTwice({
     );
     t.start()
       .then(() => {
-        t.outs.out.on("data", (data) => {
+        onData(t.outs.out, (data) => {
           if (data != null) received.push(data);
         });
         if (controls.alertaddress !== undefined) {
@@ -138,7 +137,7 @@ function runTwice({
 
 describe("AlertComposer component", () => {
   it("passes non-failed messages through to OUT unchanged", async () => {
-    const t = require("../components/AlertComposer.js");
+    const t = AlertComposerModule;
     // sanity: component exports getComponent
     assert.strictEqual(typeof t.getComponent, "function");
 

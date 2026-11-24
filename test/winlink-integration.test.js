@@ -1,8 +1,7 @@
 // Smoketest for Winlink integration in encode endpoint
 
-const { test } = require("node:test");
-const assert = require("node:assert");
-const { describe } = require("node:test");
+import assert from "node:assert";
+import { describe, test } from "node:test";
 
 // Mock plugin structure for testing
 const mockApp = {
@@ -13,7 +12,9 @@ const mockApp = {
   plugins: {},
 };
 
-const plugin = require("../plugin/index.js")(mockApp);
+import factory from "../plugin/index.js";
+
+const plugin = factory(mockApp);
 
 describe("Winlink Integration", () => {
   test("encode endpoint should include winlink data when identity is available", async () => {

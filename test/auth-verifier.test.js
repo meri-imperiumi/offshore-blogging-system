@@ -1,14 +1,12 @@
 import assert from "node:assert";
-import { createRequire } from "node:module";
 import { describe, it } from "node:test";
 
 // Load component + reticulum via createRequire so the test shares the
 // component's CJS module instance (same reasoning as the InReachSender /
 // AlertComposer tests).
-const require = createRequire(import.meta.url);
-const { Identity, toHex } = require("@reticulum/core");
+import { Identity, toHex } from "@reticulum/core";
 
-const authVerifierModule = require("../components/AuthVerifier.js");
+import * as authVerifierModule from "../components/AuthVerifier.js";
 
 function makeVerifier() {
   return authVerifierModule.getComponent();
